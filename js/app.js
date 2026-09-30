@@ -1,6 +1,6 @@
 // 手帳アプリ 本体（画面・操作）
 import * as L from './logic.js';
-import { GoogleBackend, consumeRedirectToken, readLoginLog } from './backend-google.js';
+import { GoogleBackend, consumeRedirectToken, readLoginLog, isStandalone } from './backend-google.js';
 import { DemoBackend } from './backend-demo.js';
 import { buildPrint } from './print.js';
 import { Notes, GitHubNotes, DemoNotes } from './obsidian.js';
@@ -27,9 +27,11 @@ function parseImport(text) {
   catch { return null; }
 }
 // QR で開かれたとき: URL から設定を取り込み、すぐ URL から消す
+let importLink = '';
 function readImport() {
   if (!location.hash.startsWith('#import=')) return null;
   const s = parseImport(location.hash);
+  importLink = PUBLIC_URL + location.hash; // ブラウザで開いた時にホーム画面アプリへ渡せるよう控える
   history.replaceState(null, '', location.pathname + location.search);
   return s;
 }
@@ -589,6 +591,19 @@ async function showSettingsQr() {
   } catch (e) { toast(e.message); }
 }
 
+// QR をブラウザ（Safari/Chrome）で開いた場合: ホーム画面アプリは保存場所が別なので、リンクをコピーして渡してもらう
+function offerImportCopy() {
+  const form = openModal('設定を取り込みました', `
+    <p>このブラウザには設定が入りました。</p>
+    <p class="note">ホーム画面の「手帳」アプリでも使う場合は、下の「リンクをコピー」を押してから、
+    ホーム画面の手帳アプリで ⚙設定 →「設定コードを貼り付け」に貼って保存してください。</p>`,
+  async () => {}, '閉じる', '<button type="button" class="primary" data-copy>リンクをコピー</button>');
+  form.querySelector('[data-copy]').onclick = async () => {
+    try { await navigator.clipboard.writeText(importLink); toast('コピーしました。ホーム画面の手帳アプリに貼ってください'); }
+    catch { toast('コピーできませんでした'); }
+  };
+}
+
 let toastTimer;
 function toast(msg) {
   const t = $('#toast');
@@ -689,6 +704,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && L.ymd(new Date()) !== state.today) load();
 });
 load().then(() => {
-  if (imported) toast('設定を取り込みました');
+  if (imported && !isStandalone()) offerImportCopy();
+  else if (imported) toast('設定を取り込みました');
   else if (redirected && redirected.error) { state.error = `Googleログインに失敗しました（${redirected.error}）`; render(); }
 });
