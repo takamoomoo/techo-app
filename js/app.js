@@ -1,6 +1,6 @@
 // 手帳アプリ 本体（画面・操作）
 import * as L from './logic.js';
-import { GoogleBackend } from './backend-google.js';
+import { GoogleBackend, consumeRedirectToken } from './backend-google.js';
 import { DemoBackend } from './backend-demo.js';
 import { buildPrint } from './print.js';
 import { Notes, GitHubNotes, DemoNotes } from './obsidian.js';
@@ -19,14 +19,21 @@ const DEFAULT_CLIENT_ID = '652451864608-8v8n62vs721gom1qc3ugu0pdjptlmcuq.apps.go
 const PUBLIC_URL = 'https://takamoomoo.github.io/techo-app/';
 const isClientId = s => /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(s || '');
 
-// 「スマホへ設定を送る」QR で開かれたとき: URL の #import=… から設定を取り込み、すぐ URL から消す
-function readImport() {
-  const m = location.hash.match(/^#import=(.+)$/);
+// 「スマホへ設定を送る」のリンク（…#import=…）から設定を取り出す
+function parseImport(text) {
+  const m = String(text || '').match(/#import=([^\s#]+)/);
   if (!m) return null;
-  history.replaceState(null, '', location.pathname + location.search);
   try { return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(decodeURIComponent(m[1])), c => c.charCodeAt(0)))); }
   catch { return null; }
 }
+// QR で開かれたとき: URL から設定を取り込み、すぐ URL から消す
+function readImport() {
+  if (!location.hash.startsWith('#import=')) return null;
+  const s = parseImport(location.hash);
+  history.replaceState(null, '', location.pathname + location.search);
+  return s;
+}
+const redirected = consumeRedirectToken(); // Google ログイン（ページ移動方式）から戻ってきた場合
 const imported = readImport();
 const settings = {
   mode: location.hostname.endsWith('github.io') ? 'google' : 'demo', clientId: DEFAULT_CLIENT_ID,
@@ -53,7 +60,7 @@ function makeNotes() {
 }
 
 function makeBackend() {
-  return settings.mode === 'google' && settings.clientId ? new GoogleBackend(settings.clientId) : new DemoBackend();
+  return settings.mode === 'google' && settings.clientId ? new GoogleBackend(settings.clientId, location.href.startsWith(PUBLIC_URL) ? PUBLIC_URL : null) : new DemoBackend();
 }
 
 function range() {
@@ -518,6 +525,7 @@ function settingsForm() {
       <label>GitHub アクセストークン<input name="ghToken" type="password" autocomplete="off" value="${esc(settings.ghToken)}" placeholder="github_pat_…"></label>
       <label>リポジトリ<input name="ghRepo" value="${esc(settings.ghRepo)}"></label>
       <label>ブランチ<input name="ghBranch" value="${esc(settings.ghBranch)}"></label>
+      <label>設定コードを貼り付け（PCの「📱 スマホへ設定を送る」のリンク）<textarea name="importCode" rows="2" placeholder="https://takamoomoo.github.io/techo-app/#import=…"></textarea></label>
       <p class="note">トークンはこの端末の中だけに保存されます。空欄ならObsidianには保存しません${settings.mode !== 'google' ? '（お試しモードでは端末内の仮ノートに保存）' : ''}。</p>
     </fieldset>`,
   async fd => {
@@ -526,6 +534,12 @@ function settingsForm() {
       ghToken: String(fd.get('ghToken')).trim(), ghRepo: String(fd.get('ghRepo')).trim() || 'takamoomoo/takayuki-brain',
       ghBranch: String(fd.get('ghBranch')).trim() || 'main',
     };
+    const code = String(fd.get('importCode') || '').trim();
+    if (code) {
+      const imp = parseImport(code);
+      if (!imp) { toast('設定コードを読み取れません（リンク全体を貼ってください）'); return false; }
+      Object.assign(next, imp);
+    }
     if (next.mode === 'google' && !next.clientId) { toast('クライアントIDを入力してください'); return false; }
     const calChanged = next.mode !== settings.mode || next.clientId !== settings.clientId;
     Object.assign(settings, next);
@@ -566,7 +580,8 @@ async function showSettingsQr() {
     qr.addData(url); qr.make();
     openModal('スマホへ設定を送る', `
       <div class="qrbox">${qr.createSvgTag({ cellSize: 5, margin: 4, scalable: true })}</div>
-      <p class="note">iPhone のカメラで読み取り、表示された「takamoomoo.github.io」を開くと設定が入ります。<br>
+      <p class="note">Safari で使う場合：iPhone のカメラで読み取り、表示された「takamoomoo.github.io」を開くと設定が入ります。<br>
+      ホーム画面のアプリで使う場合：カメラの表示を長押しして「リンクをコピー」→ ホーム画面のアプリの ⚙設定「設定コードを貼り付け」に貼って保存。<br>
       ⚠ このQRには GitHub トークンが入っています。人に見せず、読み取ったらすぐ閉じてください。</p>`,
     async () => {}, '閉じる');
   } catch (e) { toast(e.message); }
@@ -589,7 +604,7 @@ function go(delta) {
 
 async function doLogin() {
   try {
-    await backend.signIn(backend.ready ? '' : 'consent');
+    await backend.signIn();
     await load();
   } catch (e) { toast(e.message); }
 }
@@ -671,4 +686,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && L.ymd(new Date()) !== state.today) load();
 });
-load().then(() => { if (imported) toast("設定を取り込みました"); });
+load().then(() => {
+  if (imported) toast('設定を取り込みました');
+  else if (redirected && redirected.error) toast(`Googleログインに失敗しました（${redirected.error}）`);
+});

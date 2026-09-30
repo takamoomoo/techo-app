@@ -5,13 +5,49 @@ const API = 'https://www.googleapis.com/calendar/v3';
 const SCOPE = 'https://www.googleapis.com/auth/calendar';
 const TASK_CAL_NAME = 'タスク';
 
+// iPhone のホーム画面アプリはポップアップの結果を受け取れないため、ページ移動方式でログインする
+export const isStandalone = () =>
+  window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+
+const TOKEN_KEY = 'techo-gtoken';
+
+// Google から戻ってきたとき（#access_token=…）にトークンを受け取り、URL から消す
+export function consumeRedirectToken() {
+  if (!location.hash.startsWith('#access_token=') && !location.hash.startsWith('#error=')) return null;
+  const p = new URLSearchParams(location.hash.slice(1));
+  history.replaceState(null, '', location.pathname + location.search);
+  let expected = null;
+  try { expected = sessionStorage.getItem('techo-oauth-state'); sessionStorage.removeItem('techo-oauth-state'); } catch { /* 無視 */ }
+  if (p.get('error')) return { error: p.get('error') };
+  if (!expected || p.get('state') !== expected) return { error: 'state_mismatch' };
+  const t = { token: p.get('access_token'), expiry: Date.now() + (Number(p.get('expires_in') || 3600) - 60) * 1000 };
+  try { sessionStorage.setItem(TOKEN_KEY, JSON.stringify(t)); } catch { /* 無視 */ }
+  return t;
+}
+
 export class GoogleBackend {
-  constructor(clientId) {
+  constructor(clientId, redirectUri) {
     this.clientId = clientId;
+    this.redirectUri = redirectUri;
     this.token = null;
     this.tokenClient = null;
     this.cal = { main: 'primary', tasks: null, holiday: null, family: [] };
     this.readonly = false;
+    try { // 同じ起動中に受け取ったトークン（ページ移動方式）を使い回す
+      const t = JSON.parse(sessionStorage.getItem(TOKEN_KEY));
+      if (t && t.expiry > Date.now()) { this.token = t.token; this.tokenExpiry = t.expiry; }
+    } catch { /* 無視 */ }
+  }
+
+  signInRedirect(prompt) {
+    const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    try { sessionStorage.setItem('techo-oauth-state', state); } catch { /* 無視 */ }
+    const q = new URLSearchParams({
+      client_id: this.clientId, redirect_uri: this.redirectUri, response_type: 'token',
+      scope: SCOPE, include_granted_scopes: 'true', state, ...(prompt ? { prompt } : {}),
+    });
+    location.href = `https://accounts.google.com/o/oauth2/v2/auth?${q}`;
+    return new Promise(() => {}); // ページを離れるので戻らない
   }
 
   get name() { return 'google'; }
@@ -29,6 +65,7 @@ export class GoogleBackend {
 
   // ボタン操作から呼ぶ（iPhone Safari のポップアップ制限対策）
   async signIn(prompt = '') {
+    if (isStandalone() && this.redirectUri) return this.signInRedirect(prompt);
     await this.loadGis();
     return new Promise((resolve, reject) => {
       this.tokenClient = google.accounts.oauth2.initTokenClient({

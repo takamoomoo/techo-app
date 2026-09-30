@@ -1,5 +1,5 @@
 // アプリ本体だけをキャッシュ（予定データは app.js が localStorage に保存）
-const CACHE = 'techo-v4';
+const CACHE = 'techo-v5';
 const FILES = ['./', './index.html', './style.css', './js/app.js', './js/logic.js', './js/print.js',
   './js/backend-google.js', './js/backend-demo.js', './js/obsidian.js', './js/obsidian-md.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
