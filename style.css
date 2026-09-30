@@ -197,3 +197,5 @@ svg.links { position: absolute; top: 0; left: 0; pointer-events: none; overflow:
 .pr-code { position: absolute; bottom: 3.5mm; left: 10mm; font: 6pt monospace; color: #555; letter-spacing: .1em; }
 .pr-fold { position: absolute; left: 148.5mm; width: 0; height: 5mm; border-left: .2mm dashed #888; }
 .pr-fold.t { top: 0; } .pr-fold.b { bottom: 0; }
+.qrbox { background: #fff; padding: 8px; border: 1px solid var(--line); border-radius: 10px; display: flex; justify-content: center; }
+.qrbox svg { width: 100%; max-width: 320px; height: auto; }

@@ -14,7 +14,27 @@ const HOUR_PX = 40, DAY_FROM = 6, DAY_TO = 22; // 画面の時間帯 6:00〜22:0
 function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 無視 */ } }
 
-const settings = { mode: 'demo', clientId: '', ghToken: '', ghRepo: 'takamoomoo/takayuki-brain', ghBranch: 'main', ...(lsGet('techo-settings') || {}) };
+// Google OAuth クライアントID は秘密情報ではないので既定値として持つ（端末ごとの入力を不要にする）
+const DEFAULT_CLIENT_ID = '652451864608-8v8n62vs721gom1qc3ugu0pdjptlmcuq.apps.googleusercontent.com';
+const PUBLIC_URL = 'https://takamoomoo.github.io/techo-app/';
+const isClientId = s => /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(s || '');
+
+// 「スマホへ設定を送る」QR で開かれたとき: URL の #import=… から設定を取り込み、すぐ URL から消す
+function readImport() {
+  const m = location.hash.match(/^#import=(.+)$/);
+  if (!m) return null;
+  history.replaceState(null, '', location.pathname + location.search);
+  try { return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(decodeURIComponent(m[1])), c => c.charCodeAt(0)))); }
+  catch { return null; }
+}
+const imported = readImport();
+const settings = {
+  mode: location.hostname.endsWith('github.io') ? 'google' : 'demo', clientId: DEFAULT_CLIENT_ID,
+  ghToken: '', ghRepo: 'takamoomoo/takayuki-brain', ghBranch: 'main',
+  ...(lsGet('techo-settings') || {}), ...(imported || {}),
+};
+if (!isClientId(settings.clientId)) settings.clientId = DEFAULT_CLIENT_ID; // 貼り間違い・途中切れを救済
+if (imported) lsSet('techo-settings', settings);
 const state = {
   view: matchMedia('(max-width: 760px)').matches ? 'day' : 'week',
   anchor: L.ymd(new Date()), today: L.ymd(new Date()),
@@ -518,13 +538,38 @@ function settingsForm() {
     state.notesWeek = null;
     closeModal();
     await load();
-  }, '保存', settings.mode !== 'google' ? '<button type="button" data-reset>お試しデータを初期化</button>' : '');
+  }, '保存', settings.mode !== 'google' ? '<button type="button" data-reset>お試しデータを初期化</button>'
+    : '<button type="button" data-qr>📱 スマホへ設定を送る</button>');
+  const q = form.querySelector('[data-qr]');
+  if (q) q.onclick = () => showSettingsQr();
   const r = form.querySelector('[data-reset]');
   if (r) r.onclick = async () => {
     new DemoBackend().reset(); new DemoNotes().reset();
     backend = makeBackend(); notes = makeNotes(); state.notesWeek = null;
     closeModal(); await load(); toast('お試しデータを初期化しました');
   };
+}
+
+// この端末の設定を QR にしてスマホで読み取らせる（URL の # 以降はサーバーに送られない）
+async function showSettingsQr() {
+  const payload = { mode: settings.mode, clientId: settings.clientId, ghToken: settings.ghToken, ghRepo: settings.ghRepo, ghBranch: settings.ghBranch };
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  const url = `${PUBLIC_URL}#import=${encodeURIComponent(btoa(String.fromCharCode(...bytes)))}`;
+  try {
+    if (!window.qrcode) await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+      s.onload = resolve; s.onerror = () => reject(new Error('QRの部品を読み込めません（ネット接続を確認）'));
+      document.head.appendChild(s);
+    });
+    const qr = window.qrcode(0, 'L');
+    qr.addData(url); qr.make();
+    openModal('スマホへ設定を送る', `
+      <div class="qrbox">${qr.createSvgTag({ cellSize: 5, margin: 4, scalable: true })}</div>
+      <p class="note">iPhone のカメラで読み取り、表示された「takamoomoo.github.io」を開くと設定が入ります。<br>
+      ⚠ このQRには GitHub トークンが入っています。人に見せず、読み取ったらすぐ閉じてください。</p>`,
+    async () => {}, '閉じる');
+  } catch (e) { toast(e.message); }
 }
 
 let toastTimer;
@@ -626,4 +671,4 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && L.ymd(new Date()) !== state.today) load();
 });
-load();
+load().then(() => { if (imported) toast("設定を取り込みました"); });
