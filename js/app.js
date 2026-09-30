@@ -714,10 +714,10 @@ async function showSettingsQr() {
 // QR をブラウザ（Safari/Chrome）で開いた場合: ホーム画面アプリは保存場所が別なので、リンクをコピーして渡してもらう
 function offerImportCopy() {
   const form = openModal('設定を取り込みました', `
-    <p>このブラウザには設定が入りました。</p>
-    <p class="note">ホーム画面の「手帳」アプリでも使う場合は、下の「リンクをコピー」を押してから、
-    ホーム画面の手帳アプリで ⚙設定 →「設定コードを貼り付け」に貼って保存してください。</p>`,
-  async () => {}, '閉じる', '<button type="button" class="primary" data-copy>リンクをコピー</button>');
+    <p>このブラウザに設定が入りました。<b>「閉じる」を押せば、このまま使えます。</b></p>
+    <p class="note">ホーム画面のアイコンが同じブラウザで開く場合は、それ以上の操作は不要です。<br>
+    別のブラウザで開く場合だけ、「リンクをコピー」を押して、そちらの ⚙設定 →「設定コードを貼り付け」に貼ってください。</p>`,
+  async () => {}, '閉じる', '<button type="button" data-copy>リンクをコピー</button>');
   form.querySelector('[data-copy]').onclick = async () => {
     try { await navigator.clipboard.writeText(importLink); toast('コピーしました。ホーム画面の手帳アプリに貼ってください'); }
     catch { toast('コピーできませんでした'); }
