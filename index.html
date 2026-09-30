@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>手帳</title>
+<meta name="theme-color" content="#0c1624">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="手帳">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">🛖 <span>HOME</span> 手帳</div>
+  <nav class="nav">
+    <button data-act="prev" aria-label="前へ">◀</button>
+    <button data-act="today">今日</button>
+    <button data-act="next" aria-label="次へ">▶</button>
+    <span id="period"></span>
+  </nav>
+  <div class="tools">
+    <span class="seg"><button data-act="view" data-view="week">週</button><button data-act="view" data-view="day">日</button></span>
+    <button data-act="new-event">＋予定</button>
+    <button data-act="new-task">＋タスク</button>
+    <button data-act="print" class="pc-only">🖨 印刷</button>
+    <button data-act="settings" aria-label="設定">⚙</button>
+  </div>
+</header>
+<div id="banner"></div>
+<main id="main"></main>
+<div id="selbar" hidden></div>
+<div id="modal" hidden></div>
+<div id="toast" hidden></div>
+<div id="print"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
