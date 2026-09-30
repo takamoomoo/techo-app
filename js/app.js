@@ -688,5 +688,5 @@ document.addEventListener('visibilitychange', () => {
 });
 load().then(() => {
   if (imported) toast('設定を取り込みました');
-  else if (redirected && redirected.error) toast(`Googleログインに失敗しました（${redirected.error}）`);
+  else if (redirected && redirected.error) { state.error = `Googleログインに失敗しました（${redirected.error}）`; render(); }
 });

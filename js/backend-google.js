@@ -17,11 +17,11 @@ export function consumeRedirectToken() {
   const p = new URLSearchParams(location.hash.slice(1));
   history.replaceState(null, '', location.pathname + location.search);
   let expected = null;
-  try { expected = sessionStorage.getItem('techo-oauth-state'); sessionStorage.removeItem('techo-oauth-state'); } catch { /* 無視 */ }
+  try { expected = localStorage.getItem('techo-oauth-state'); localStorage.removeItem('techo-oauth-state'); } catch { /* 無視 */ }
   if (p.get('error')) return { error: p.get('error') };
   if (!expected || p.get('state') !== expected) return { error: 'state_mismatch' };
   const t = { token: p.get('access_token'), expiry: Date.now() + (Number(p.get('expires_in') || 3600) - 60) * 1000 };
-  try { sessionStorage.setItem(TOKEN_KEY, JSON.stringify(t)); } catch { /* 無視 */ }
+  try { localStorage.setItem(TOKEN_KEY, JSON.stringify(t)); } catch { /* 無視 */ }
   return t;
 }
 
@@ -34,14 +34,14 @@ export class GoogleBackend {
     this.cal = { main: 'primary', tasks: null, holiday: null, family: [] };
     this.readonly = false;
     try { // 同じ起動中に受け取ったトークン（ページ移動方式）を使い回す
-      const t = JSON.parse(sessionStorage.getItem(TOKEN_KEY));
+      const t = JSON.parse(localStorage.getItem(TOKEN_KEY));
       if (t && t.expiry > Date.now()) { this.token = t.token; this.tokenExpiry = t.expiry; }
     } catch { /* 無視 */ }
   }
 
   signInRedirect(prompt) {
     const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    try { sessionStorage.setItem('techo-oauth-state', state); } catch { /* 無視 */ }
+    try { localStorage.setItem('techo-oauth-state', state); } catch { /* 無視 */ }
     const q = new URLSearchParams({
       client_id: this.clientId, redirect_uri: this.redirectUri, response_type: 'token',
       scope: SCOPE, include_granted_scopes: 'true', state, ...(prompt ? { prompt } : {}),
