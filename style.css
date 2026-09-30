@@ -141,7 +141,7 @@ svg.links { position: absolute; top: 0; left: 0; pointer-events: none; overflow:
 @media (max-width: 760px) {
   .pc-only { display: none; }
   .top { gap: 6px 8px; padding-left: 10px; padding-right: 10px; }
-  .brand { display: none; }
+  .brand em { display: none; } .brand span { letter-spacing: .2em; margin: 0 0 0 .2em; }
   .tools { margin-left: 0; width: 100%; }
   .tools button { padding: 6px 8px; }
   main { padding: 8px 8px 110px; }
@@ -203,3 +203,63 @@ svg.links { position: absolute; top: 0; left: 0; pointer-events: none; overflow:
 .nlist li span { vertical-align: middle; }
 .nlist .ndel { min-height: 0; padding: 0 7px; margin-left: 8px; font-size: 12px; color: var(--mute); border-color: transparent; background: transparent; vertical-align: middle; }
 .nlist .ndel:hover { color: var(--sun); border-color: #f0c9c2; }
+
+/* ---------- HOME（表紙＋メニュー）: 手帳表紙_HOME.pdf の右半分を画面用に ---------- */
+.brand { background: transparent; border: 0; color: #fff; padding: 4px 6px; min-height: 0; cursor: pointer; border-radius: 8px; }
+.brand:hover { background: rgba(255,255,255,.08); }
+.brand em { font-style: normal; }
+body.on-home .nav, body.on-home .tools > :not([data-act=settings]) { display: none; }
+body.on-home { background: #0a121e; min-height: 100vh; }
+html:has(body.on-home) { background: #0a121e; }
+body.on-home main { padding-top: 18px; }
+
+.homepage { display: flex; gap: 28px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+.cover { position: relative; width: min(100%, 540px); background: linear-gradient(180deg, #13233a 0%, #0c1624 100%);
+  color: #f3ede2; border-radius: 14px; overflow: hidden; box-shadow: 0 18px 40px rgba(0,0,0,.45); padding-bottom: 28px; }
+.cv-photo { height: 330px; background: center 35% / cover no-repeat; position: relative; }
+.cv-photo.none { background: radial-gradient(circle at 30% 70%, #ffd37a 0, #f08a4b 18%, #6a4b7a 45%, #13233a 80%); }
+.cv-photo::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(12,22,36,0) 40%, rgba(19,35,58,.6) 72%, #13233a 100%); }
+.cv-brand { position: absolute; top: 22px; left: 32px; font: 500 11px "Cinzel", Georgia, serif; letter-spacing: .4em; color: rgba(255,255,255,.88);
+  text-shadow: 0 0 6px rgba(0,0,0,.4); }
+.cv-title { position: relative; margin: -86px 32px 0; }
+.cv-title .hut { font-size: 52px; line-height: 1; display: block; filter: drop-shadow(0 4px 6px rgba(0,0,0,.45)); }
+.cv-title h1 { margin: 6px 0 0; font: 700 46px "Cinzel", Georgia, serif; letter-spacing: .55em; color: #fff; }
+.cv-title .line { margin-top: 8px; height: 1px; background: linear-gradient(90deg, #e6b86a, rgba(230,184,106,.12)); }
+.cv-slogan, .cv-mission { margin: 26px 32px 0; cursor: pointer; border-radius: 10px; transition: background .15s; }
+.cv-slogan:hover, .cv-mission:hover { background: rgba(255,255,255,.04); outline: 1px dashed rgba(230,184,106,.35); outline-offset: 6px; }
+.cv-slogan .label { font: 500 11px "Cinzel", Georgia, serif; letter-spacing: .3em; color: #e6b86a; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cv-slogan .label .jp { font-family: inherit; letter-spacing: .15em; color: #aeb8c6; font-size: 11px; }
+.cv-slogan .pen { margin-left: auto; font-size: 11px; letter-spacing: .05em; color: #aeb8c6; opacity: .8; }
+.cv-slogan h2 { margin: 6px 0 10px; font: 800 28px "Shippori Mincho B1", "Yu Mincho", serif; letter-spacing: .22em; }
+.cv-slogan ol { list-style: none; margin: 0; padding: 0; }
+.cv-slogan li { display: flex; gap: 12px; align-items: baseline; font-size: 15px; line-height: 1.9; letter-spacing: .05em; }
+.cv-slogan li .n { font: 500 11px "Cinzel", Georgia, serif; color: #c9a063; width: 18px; flex: none; }
+.cv-slogan li.hl .t { color: #fff; border-bottom: 1px solid #e6b86a; }
+.cv-mission { border-left: 3px solid #e6b86a; padding: 4px 0 4px 14px; }
+.cv-mission p { margin: 0; font: 700 15.5px/1.7 "Shippori Mincho B1", "Yu Mincho", serif; letter-spacing: .03em; }
+.cv-mission .sub { margin-top: 6px; font-size: 12.5px; letter-spacing: .12em; color: #e6b86a; }
+
+.menu { width: min(100%, 340px); color: #f3ede2; }
+.menu h3 { margin: 4px 0 14px; font: 700 18px "Cinzel", Georgia, serif; letter-spacing: .35em; color: #e6b86a; }
+.menu h3 span { font: 500 12px system-ui, sans-serif; letter-spacing: .15em; color: #aeb8c6; margin-left: 8px; }
+.menu .mi { width: 100%; display: flex; align-items: center; gap: 14px; text-align: left; padding: 14px 16px; margin-bottom: 10px;
+  background: #13233a; color: #f3ede2; border: 1px solid rgba(230,184,106,.25); border-radius: 12px; min-height: 64px; font-size: 16px; }
+.menu button.mi:hover { border-color: #e6b86a; background: #182c49; }
+.menu .mi .ic { font-size: 26px; }
+.menu .mi b { display: block; font-weight: 700; letter-spacing: .05em; }
+.menu .mi small { display: block; font-size: 12px; color: #aeb8c6; margin-top: 2px; }
+.menu .mi .go { margin-left: auto; font-size: 24px; color: #e6b86a; }
+.menu .mi.soon { opacity: .45; border-style: dashed; }
+.menu .note { font-size: 12px; color: #aeb8c6; background: transparent; border-left-color: #e6b86a; }
+
+@media (max-width: 760px) {
+  body.on-home .brand { display: inline-flex; }
+  body.on-home .tools { width: auto; margin-left: auto; }
+  .homepage { gap: 18px; }
+  .cv-photo { height: 230px; }
+  .cv-title { margin: -70px 20px 0; } .cv-title h1 { font-size: 36px; } .cv-title .hut { font-size: 42px; }
+  .cv-slogan, .cv-mission { margin-left: 20px; margin-right: 20px; }
+  .cv-brand { left: 20px; top: 16px; }
+  .menu { width: 100%; }
+}

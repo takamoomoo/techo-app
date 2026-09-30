@@ -32,6 +32,11 @@ export class GitHubNotes {
   async putFile(path, text, sha, message) {
     return this.req('PUT', path, { message, content: O.b64encode(text), branch: this.branch, ...(sha ? { sha } : {}) });
   }
+  // 画像など（1MB未満）を base64 のまま取る
+  async getBase64(path) {
+    const r = await this.req('GET', path);
+    return r && String(r.content).replace(/\s/g, '');
+  }
 }
 
 // お試し用（localStorage）。GitHub と同じ getFile/putFile を持つ
@@ -85,6 +90,7 @@ export class DemoNotes {
     try { localStorage.setItem(DEMO_KEY, JSON.stringify(all)); } catch { /* 無視 */ }
   }
   reset() { try { localStorage.removeItem(DEMO_KEY); } catch { /* 無視 */ } }
+  async getBase64() { return null; } // お試しでは表紙写真なし（グラデーション表示）
 }
 
 export class Notes {
@@ -103,6 +109,27 @@ export class Notes {
       this.template = f.text;
     }
     return this.template;
+  }
+
+  // ---- HOME（表紙） ----
+  async loadHome() {
+    const f = await this.store.getFile(O.HOME_PATH);
+    return { home: f ? O.parseHome(f.text) : { ...O.DEFAULT_HOME }, sha: f ? f.sha : null };
+  }
+  // 読み込んだ後に Obsidian 側で変更されていたら上書きせずに知らせる
+  async saveHome(home, baseSha) {
+    const f = await this.store.getFile(O.HOME_PATH);
+    if ((f ? f.sha : null) !== (baseSha || null)) {
+      const e = new Error('Obsidian側でHOMEが変更されていました。最新を読み直したので、もう一度編集してください');
+      e.code = 'STALE';
+      throw e;
+    }
+    await this.store.putFile(O.HOME_PATH, O.formatHome(home), f && f.sha, 'techo: HOME（今月のスローガン）更新');
+    return this.loadHome();
+  }
+  async loadCover() {
+    const b64 = await this.store.getBase64(O.COVER_PATH);
+    return b64 ? `data:image/jpeg;base64,${b64}` : null;
   }
 
   // 📓 行を1行削除。競合したら読み直して最大3回。戻り値 false = 既に無い

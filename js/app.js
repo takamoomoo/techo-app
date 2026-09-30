@@ -4,6 +4,7 @@ import { GoogleBackend, consumeRedirectToken, readLoginLog, isStandalone } from 
 import { DemoBackend } from './backend-demo.js';
 import { buildPrint } from './print.js';
 import { Notes, GitHubNotes, DemoNotes } from './obsidian.js';
+import * as O from './obsidian-md.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -52,6 +53,8 @@ const state = {
   offline: false, cachedAt: null, needLogin: false, loading: false, error: '', selected: null,
   notes: new Map(), notesWeek: null, notesAt: 0, notesError: '', notesOffline: false,
   drafts: lsGet('techo-drafts') || {}, // 入力途中のメモ（保存前）は端末に残す
+  page: location.hash === '#home' || lsGet('techo-page') === 'home' ? 'home' : 'schedule', // #home か最後に開いていた画面
+  home: lsGet('techo-home-cache'), homeSha: null, homeError: '', cover: lsGet('techo-cover'),
 };
 let backend = makeBackend();
 let notes = makeNotes();
@@ -208,8 +211,108 @@ function moveTask(t, date) {
     `${L.mdLabel(date)} に移動しました`);
 }
 
+// ---------- HOME（表紙＋メニュー） ----------
+// メニューは配列で管理（大きな時計・習慣化管理などを後から足す）
+const MENU = [
+  { act: 'open-schedule', icon: '📅', title: 'スケジュール帳', desc: '週・日表示／Googleカレンダー・Obsidian連携' },
+  { icon: '⏰', title: '大きな時計', desc: '準備中', soon: true },
+  { icon: '✅', title: '習慣化管理', desc: '準備中', soon: true },
+];
+
+function homeHtml() {
+  const h = state.home || O.DEFAULT_HOME;
+  const items = h.items.map((t, i) => {
+    const hl = t.startsWith(O.HIGHLIGHT);
+    return `<li class="${hl ? 'hl' : ''}"><span class="n">${String(i + 1).padStart(2, '0')}</span><span class="t">${esc(hl ? t.slice(1) : t)}</span></li>`;
+  }).join('');
+  const photo = state.cover ? `style="background-image:url('${state.cover}')"` : '';
+  return `<div class="homepage">
+    <section class="cover">
+      <div class="cv-photo${state.cover ? '' : ' none'}" ${photo}></div>
+      <div class="cv-brand">PERSONAL NOTEBOOK</div>
+      <div class="cv-title"><span class="hut">🛖</span><h1>HOME</h1><div class="line"></div></div>
+      <div class="cv-slogan" data-act="edit-home" role="button" tabindex="0" title="押して編集">
+        <div class="label">☀ MONTHLY SLOGAN <span class="jp">今月のスローガン</span><span class="pen">✎ 編集</span></div>
+        <h2>${esc(h.title)}</h2><ol>${items}</ol>
+      </div>
+      <div class="cv-mission" data-act="edit-home" role="button" tabindex="0" title="押して編集">
+        <p>${esc(h.mission).replace(/\n/g, '<br>')}</p>${h.sub ? `<div class="sub">${esc(h.sub)}</div>` : ''}
+      </div>
+    </section>
+    <aside class="menu">
+      <h3>MENU <span>メニュー</span></h3>
+      ${MENU.map(m => m.soon
+        ? `<div class="mi soon"><span class="ic">${m.icon}</span><span><b>${esc(m.title)}</b><small>${esc(m.desc)}</small></span></div>`
+        : `<button class="mi" data-act="${m.act}"><span class="ic">${m.icon}</span><span><b>${esc(m.title)}</b><small>${esc(m.desc)}</small></span><span class="go">›</span></button>`).join('')}
+      ${state.homeError ? `<p class="note">${esc(state.homeError)}</p>` : ''}
+      ${!notes ? '<p class="note">⚙でGitHubトークンを入れると、スローガンがObsidianに保存されPCとスマホで共有されます。</p>' : ''}
+    </aside>
+  </div>`;
+}
+
+async function loadHome() {
+  state.homeError = '';
+  if (!notes) { state.home = lsGet('techo-home-local') || { ...O.DEFAULT_HOME }; state.homeSha = null; render(); return; }
+  try {
+    const r = await notes.loadHome();
+    state.home = r.home; state.homeSha = r.sha;
+    lsSet('techo-home-cache', r.home);
+  } catch (e) {
+    state.home = lsGet('techo-home-cache') || { ...O.DEFAULT_HOME };
+    state.homeError = `Obsidianから読めませんでした（${e.message}）。保存済みの内容を表示しています`;
+  }
+  render();
+  if (!state.cover) {
+    try {
+      const c = await notes.loadCover();
+      if (c) { state.cover = c; lsSet('techo-cover', c); render(); }
+    } catch { /* 写真が無くても表紙は出す */ }
+  }
+}
+
+function editHome() {
+  const h = state.home || O.DEFAULT_HOME;
+  openModal('今月のスローガンを編集', `
+    <label>スローガン（大きな見出し）<input name="title" required value="${esc(h.title)}"></label>
+    <label>項目（1行1件。先頭に ★ を付けると強調）<textarea name="items" rows="8">${esc(h.items.join('\n'))}</textarea></label>
+    <label>ミッション<textarea name="mission" rows="3">${esc(h.mission)}</textarea></label>
+    <label>肩書き<input name="sub" value="${esc(h.sub)}"></label>
+    <p class="note">${notes ? 'Obsidian の「手帳アプリ/HOME.md」に保存され、PCとスマホで共有されます。' : 'この端末だけに保存されます（⚙でGitHubトークンを入れるとObsidianに保存）。'}</p>`,
+  async fd => {
+    const next = {
+      title: String(fd.get('title')).trim(),
+      items: String(fd.get('items')).split(/\r?\n/).map(s => s.trim()).filter(Boolean),
+      mission: String(fd.get('mission')).trim(), sub: String(fd.get('sub')).trim(),
+    };
+    if (!notes) { lsSet('techo-home-local', next); state.home = next; render(); toast('保存しました'); return; }
+    try {
+      const r = await notes.saveHome(next, state.homeSha);
+      state.home = r.home; state.homeSha = r.sha; lsSet('techo-home-cache', r.home);
+      render(); toast('Obsidianに保存しました');
+    } catch (e) {
+      toast(e.message);
+      if (e.code === 'STALE') await loadHome();
+      return false;
+    }
+  }, '保存');
+}
+
+function goPage(page) {
+  state.page = page;
+  lsSet('techo-page', page);
+  state.selected = null;
+  if (page === 'home') { render(); loadHome(); } else load();
+}
+
 // ---------- 描画 ----------
 function render() {
+  document.body.classList.toggle('on-home', state.page === 'home');
+  if (state.page === 'home') {
+    $('#banner').innerHTML = '';
+    $('#main').innerHTML = homeHtml();
+    $('#selbar').hidden = true;
+    return;
+  }
   $('#period').textContent = periodLabel();
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === state.view));
   $('#banner').innerHTML = bannerHtml();
@@ -571,6 +674,7 @@ function settingsForm() {
     notes = makeNotes();
     state.notesWeek = null;
     closeModal();
+    if (state.page === 'home') loadHome();
     await load();
   }, '保存', settings.mode !== 'google' ? '<button type="button" data-reset>お試しデータを初期化</button>'
     : '<button type="button" data-qr>📱 スマホへ設定を送る</button>');
@@ -647,6 +751,9 @@ document.addEventListener('click', async ev => {
   if (a && !a.closest('#modal')) {
     const id = a.dataset.id, it = id && findItem(id);
     switch (a.dataset.act) {
+      case 'home': return goPage('home');
+      case 'open-schedule': return goPage('schedule');
+      case 'edit-home': return editHome();
       case 'prev': return go(-1);
       case 'next': return go(1);
       case 'today': state.anchor = L.ymd(new Date()); state.selected = null; return load();
@@ -720,6 +827,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && L.ymd(new Date()) !== state.today) load();
 });
+if (state.page === 'home') loadHome();
 load().then(() => {
   if (imported && !isStandalone()) offerImportCopy();
   else if (imported) toast('設定を取り込みました');

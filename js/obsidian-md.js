@@ -135,6 +135,45 @@ export function summarizeNote(text) {
   };
 }
 
+// ---- HOME（表紙）: Obsidian の 手帳アプリ/HOME.md に保存。Obsidian でも編集できる Markdown ----
+export const HOME_PATH = '手帳アプリ/HOME.md';
+export const COVER_PATH = '手帳アプリ/cover.jpg';
+export const HIGHLIGHT = '★';
+export const DEFAULT_HOME = {
+  title: '今を生きる',
+  items: ['良い習慣が良い一日。悪い習慣が悪い一日', '良い思考が、良い自分を作る。', '行動に意味を持たせる',
+    '目標と日常をリンクさせる。', `${HIGHLIGHT}徐々に負荷を上げる`, '小さな勝ちを褒める', 'なりたい自分を声に出す'],
+  mission: '行政書士、土地家屋調査士の資格を有するAIエンジニアの目線で　土地に関する問題解決',
+  sub: 'AIを使った、作業効率アップのプロ',
+};
+
+export function parseHome(text) {
+  const h = { title: '', items: [], mission: '', sub: '' };
+  let sec = '';
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const l = raw.trim();
+    if (l.startsWith('## ')) { sec = l.slice(3).trim(); continue; }
+    if (!l || l.startsWith('# ')) continue;
+    if (sec === '今月のスローガン') {
+      if (l.startsWith('### ')) h.title = l.slice(4).trim();
+      else if (/^[-*]\s+/.test(l)) h.items.push(l.replace(/^[-*]\s+/, ''));
+    } else if (sec === 'ミッション') h.mission = h.mission ? `${h.mission}\n${l}` : l;
+    else if (sec === '肩書き') h.sub = h.sub ? `${h.sub}\n${l}` : l;
+  }
+  return h.title || h.items.length || h.mission ? h : { ...DEFAULT_HOME };
+}
+
+export function formatHome(h) {
+  return [
+    '# 🛖 HOME（手帳アプリの表紙）', '',
+    '手帳アプリの表紙に表示されます。アプリの「今月のスローガン」を押しても編集できます。',
+    `スローガンの先頭に ${HIGHLIGHT} を付けた行は強調表示されます。`, '',
+    '## 今月のスローガン', `### ${h.title}`, ...h.items.map(i => `- ${i}`), '',
+    '## ミッション', ...String(h.mission || '').split(/\r?\n/).filter(Boolean), '',
+    '## 肩書き', ...String(h.sub || '').split(/\r?\n/).filter(Boolean), '',
+  ].join('\n');
+}
+
 // UTF-8 ⇔ base64（GitHub Contents API 用）
 export function b64encode(str) {
   const bytes = new TextEncoder().encode(str);
