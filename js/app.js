@@ -1,6 +1,6 @@
 // 手帳アプリ 本体（画面・操作）
 import * as L from './logic.js';
-import { GoogleBackend, consumeRedirectToken } from './backend-google.js';
+import { GoogleBackend, consumeRedirectToken, readLoginLog } from './backend-google.js';
 import { DemoBackend } from './backend-demo.js';
 import { buildPrint } from './print.js';
 import { Notes, GitHubNotes, DemoNotes } from './obsidian.js';
@@ -526,6 +526,8 @@ function settingsForm() {
       <label>リポジトリ<input name="ghRepo" value="${esc(settings.ghRepo)}"></label>
       <label>ブランチ<input name="ghBranch" value="${esc(settings.ghBranch)}"></label>
       <label>設定コードを貼り付け（PCの「📱 スマホへ設定を送る」のリンク）<textarea name="importCode" rows="2" placeholder="https://takamoomoo.github.io/techo-app/#import=…"></textarea></label>
+      <details class="diag"><summary>ログイン診断</summary><div>${readLoginLog().map(l =>
+        `${esc(l.at)} ${esc(l.ev)}：${esc(l.detail)}${l.standalone ? '［ホーム画面］' : '［ブラウザ］'}`).join('<br>') || '記録なし'}</div></details>
       <p class="note">トークンはこの端末の中だけに保存されます。空欄ならObsidianには保存しません${settings.mode !== 'google' ? '（お試しモードでは端末内の仮ノートに保存）' : ''}。</p>
     </fieldset>`,
   async fd => {

@@ -10,6 +10,21 @@ export const isStandalone = () =>
   window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
 
 const TOKEN_KEY = 'techo-gtoken';
+const LOG_KEY = 'techo-login-log';
+
+// ログインの流れを端末に記録（⚙設定の「ログイン診断」で見る。トークン本体は記録しない）
+export function loginLog(ev, detail = '') {
+  try {
+    const log = JSON.parse(localStorage.getItem(LOG_KEY)) || [];
+    const d = new Date();
+    log.push({ at: `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`,
+      ev, detail, standalone: isStandalone() });
+    localStorage.setItem(LOG_KEY, JSON.stringify(log.slice(-8)));
+  } catch { /* 無視 */ }
+}
+export function readLoginLog() {
+  try { return JSON.parse(localStorage.getItem(LOG_KEY)) || []; } catch { return []; }
+}
 
 // Google から戻ってきたとき（#access_token=…）にトークンを受け取り、URL から消す
 export function consumeRedirectToken() {
@@ -18,10 +33,12 @@ export function consumeRedirectToken() {
   history.replaceState(null, '', location.pathname + location.search);
   let expected = null;
   try { expected = localStorage.getItem('techo-oauth-state'); localStorage.removeItem('techo-oauth-state'); } catch { /* 無視 */ }
-  if (p.get('error')) return { error: p.get('error') };
-  if (!expected || p.get('state') !== expected) return { error: 'state_mismatch' };
+  if (p.get('error')) { loginLog('戻り', `エラー ${p.get('error')}`); return { error: p.get('error') }; }
+  // 照合値が残っていて食い違う時だけ拒否（iPhone で保存領域が消えて照合値が無い場合は受け入れる）
+  if (expected && p.get('state') !== expected) { loginLog('戻り', '照合不一致で破棄'); return { error: 'state_mismatch' }; }
   const t = { token: p.get('access_token'), expiry: Date.now() + (Number(p.get('expires_in') || 3600) - 60) * 1000 };
   try { localStorage.setItem(TOKEN_KEY, JSON.stringify(t)); } catch { /* 無視 */ }
+  loginLog('戻り', `トークン受取OK${expected ? '' : '（照合値なし）'}`);
   return t;
 }
 
@@ -46,6 +63,7 @@ export class GoogleBackend {
       client_id: this.clientId, redirect_uri: this.redirectUri, response_type: 'token',
       scope: SCOPE, include_granted_scopes: 'true', state, ...(prompt ? { prompt } : {}),
     });
+    loginLog('開始', 'ページ移動方式');
     location.href = `https://accounts.google.com/o/oauth2/v2/auth?${q}`;
     return new Promise(() => {}); // ページを離れるので戻らない
   }
@@ -66,18 +84,21 @@ export class GoogleBackend {
   // ボタン操作から呼ぶ（iPhone Safari のポップアップ制限対策）
   async signIn(prompt = '') {
     if (isStandalone() && this.redirectUri) return this.signInRedirect(prompt);
+    loginLog('開始', 'ポップアップ方式');
     await this.loadGis();
     return new Promise((resolve, reject) => {
       this.tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: this.clientId,
         scope: SCOPE,
         callback: r => {
-          if (r.error) return reject(new Error(r.error_description || r.error));
+          if (r.error) { loginLog('ポップアップ', `エラー ${r.error}`); return reject(new Error(r.error_description || r.error)); }
           this.token = r.access_token;
           this.tokenExpiry = Date.now() + (r.expires_in - 60) * 1000;
+          try { localStorage.setItem(TOKEN_KEY, JSON.stringify({ token: this.token, expiry: this.tokenExpiry })); } catch { /* 無視 */ }
+          loginLog('ポップアップ', 'トークン受取OK');
           resolve();
         },
-        error_callback: e => reject(new Error(e.message || 'ログインが中断されました')),
+        error_callback: e => { loginLog('ポップアップ', `中断 ${e.type || e.message || ''}`); reject(new Error(e.message || 'ログインが中断されました')); },
       });
       this.tokenClient.requestAccessToken({ prompt });
     });
@@ -101,7 +122,7 @@ export class GoogleBackend {
       headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
     });
-    if (res.status === 401) { this.token = null; const e = new Error('ログインが切れました'); e.code = 'AUTH'; throw e; }
+    if (res.status === 401) { loginLog('API', 'トークン拒否(401)'); this.token = null; try { localStorage.removeItem(TOKEN_KEY); } catch { /* 無視 */ } const e = new Error('ログインが切れました'); e.code = 'AUTH'; throw e; }
     if (res.status === 204) return null;
     const json = await res.json();
     if (!res.ok) throw new Error(`Google API ${res.status}: ${json.error && json.error.message}`);
