@@ -3,7 +3,7 @@
   "short_name": "手帳",
   "start_url": "./",
   "scope": "./",
-  "display": "standalone",
+  "display": "browser",
   "background_color": "#0c1624",
   "theme_color": "#0c1624",
   "icons": [
