@@ -66,6 +66,20 @@ export function appendToSection(text, heading, newLines) {
   return lines.join(eol);
 }
 
+// アプリが書いた（📓付き）行を1行だけ消す。見つからなければ null（他端末で既に消された等）
+export function removeMarkedLine(text, heading, displayText) {
+  const eol = eolOf(text);
+  const lines = text.split(/\r?\n/);
+  const r = sectionRange(lines, heading);
+  if (!r) return null;
+  for (let i = r.start + 1; i < r.end; i++) {
+    if (!lines[i].includes(MARK)) continue;
+    const [d] = toDisplay([lines[i]]);
+    if (d && d.text === displayText) { lines.splice(i, 1); return lines.join(eol); }
+  }
+  return null;
+}
+
 // アプリが書く行の形（手帳メモは箇条書き、行動ログは既存の「・」形式に合わせる）
 export function formatEntries(kind, input) {
   const bullet = kind === 'memo' ? '- ' : '・';

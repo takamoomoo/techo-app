@@ -105,6 +105,24 @@ export class Notes {
     return this.template;
   }
 
+  // 📓 行を1行削除。競合したら読み直して最大3回。戻り値 false = 既に無い
+  async remove(date, kind, displayText) {
+    const path = O.notePath(date);
+    const heading = kind === 'memo' ? O.MEMO_HEADING : O.LOG_HEADING;
+    for (let attempt = 0; ; attempt++) {
+      const f = await this.store.getFile(path);
+      const text = f && O.removeMarkedLine(f.text, heading, displayText);
+      if (!text) return false;
+      try {
+        await this.store.putFile(path, text, f.sha, `techo: ${date} ${kind === 'memo' ? '手帳メモ' : '行動ログ'}削除`);
+        return true;
+      } catch (e) {
+        if ((e.status === 409 || e.status === 422) && attempt < 2) continue;
+        throw e;
+      }
+    }
+  }
+
   // kind: 'memo' → 📝 手帳メモ / 'log' → ⚔️ 行動ログ。競合したら読み直して最大3回
   async append(date, kind, input) {
     const entries = O.formatEntries(kind, input);

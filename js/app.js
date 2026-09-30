@@ -126,6 +126,21 @@ async function loadNotes(force = false) {
   render();
 }
 
+// 📓 行（アプリで書いた行）だけ削除できる。Obsidian側で書いた行は Obsidian で直す
+function deleteNote(date, kind, i) {
+  const n = state.notes.get(date);
+  const item = n && n[kind][i];
+  if (!item || !item.mine) return;
+  if (state.notesOffline || !navigator.onLine) return toast('オフライン中は削除できません');
+  openModal('メモの削除', `<p>「${esc(item.text)}」をObsidianのノートから削除します。</p>`, async () => {
+    try {
+      const ok = await notes.remove(date, kind, item.text);
+      toast(ok ? '削除しました' : '既に削除されていました');
+      await loadNotes(true);
+    } catch (e) { toast(e.message); return false; }
+  }, '削除する');
+}
+
 async function saveNote(date, kind) {
   const k = `${date}:${kind}`;
   const text = (state.drafts[k] || '').trim();
@@ -359,7 +374,8 @@ function noteSection(d, kind) {
   const k = `${d}:${kind}`;
   return `<section class="dsec notes">
     <h3>${title}${state.notesOffline ? '<small>（オフライン表示）</small>' : ''}</h3>
-    ${list.length ? `<ul class="nlist">${list.map(x => `<li class="${x.mine ? 'mine' : ''}">${esc(x.text)}</li>`).join('')}</ul>` : '<p class="none">まだありません</p>'}
+    ${list.length ? `<ul class="nlist">${list.map((x, i) => `<li class="${x.mine ? 'mine' : ''}"><span>${esc(x.text)}</span>${x.mine
+      ? `<button class="ndel" data-act="del-note" data-date="${d}" data-kind="${kind}" data-i="${i}" aria-label="この行を削除">✕</button>` : ''}</li>`).join('')}</ul>` : '<p class="none">まだありません</p>'}
     <textarea data-draft="${k}" rows="2" placeholder="${kind === 'memo' ? '例：2-21網走川美和 完了検査' : '例：杭10本と見出しを準備した'}（1行1件）">${esc(state.drafts[k] || '')}</textarea>
     <div class="dadd"><button class="primary" data-act="save-note" data-date="${d}" data-kind="${kind}">Obsidianに保存</button></div>
   </section>`;
@@ -641,6 +657,7 @@ document.addEventListener('click', async ev => {
       case 'settings': return settingsForm();
       case 'print': return doPrint();
       case 'save-note': return saveNote(a.dataset.date, a.dataset.kind);
+      case 'del-note': return deleteNote(a.dataset.date, a.dataset.kind, Number(a.dataset.i));
       case 'new-event': return canWrite() ? eventForm(null, a.dataset.date || state.anchor) : write(async () => {});
       case 'new-task': return canWrite() ? taskForm(null, a.dataset.date || state.anchor) : write(async () => {});
       case 'toggle': return it && setDone(it, !it.done);
