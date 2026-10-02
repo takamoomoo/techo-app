@@ -6,6 +6,7 @@ import { buildPrint } from './print.js';
 import { Notes, GitHubNotes, DemoNotes, LocalFileStore } from './obsidian.js';
 import * as O from './obsidian-md.js';
 import * as H from './habit-md.js';
+import * as HS from './habit-stats.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -39,6 +40,7 @@ function readImport() {
 }
 const redirected = consumeRedirectToken(); // Google ログイン（ページ移動方式）から戻ってきた場合
 const imported = readImport();
+const SUB_PAGES = ['home', 'habit', 'review']; // スケジュール帳以外の画面（紺の背景・HOMEボタンのみ）
 const settings = {
   mode: location.hostname.endsWith('github.io') ? 'google' : 'demo', clientId: DEFAULT_CLIENT_ID,
   ghToken: '', ghRepo: 'takamoomoo/takayuki-brain', ghBranch: 'main',
@@ -54,9 +56,10 @@ const state = {
   offline: false, cachedAt: null, needLogin: false, loading: false, error: '', selected: null,
   notes: new Map(), notesWeek: null, notesAt: 0, notesError: '', notesOffline: false,
   drafts: lsGet('techo-drafts') || {}, // 入力途中のメモ（保存前）は端末に残す
-  page: ['home', 'habit'].find(p => location.hash === `#${p}`) || (['home', 'habit'].includes(lsGet('techo-page')) ? lsGet('techo-page') : 'schedule'), // #home・#habit か最後に開いていた画面
+  page: SUB_PAGES.find(p => location.hash === `#${p}`) || (SUB_PAGES.includes(lsGet('techo-page')) ? lsGet('techo-page') : 'schedule'), // #home など か最後に開いていた画面
   home: lsGet('techo-home-cache'), homeSha: null, homeError: '', cover: lsGet('techo-cover'),
   habits: null, habitMonth: L.ymd(new Date()).slice(0, 7), habitError: '',
+  review: { kind: 'week', offset: 0 },
 };
 let backend = makeBackend();
 let notes = makeNotes();
@@ -221,6 +224,10 @@ const MENU = [
     if (!state.habits || !state.habits.habits.length) return '';
     const c = H.todayCount(state.habits, state.today);
     return c.total ? `今日 ${c.done}/${c.total}` : '';
+  } },
+  { act: 'open-review', icon: '🏆', title: 'ふり返り', desc: '積み上げグラフ・バッジ・称号', badge: () => {
+    if (!state.habits || !state.habits.habits.length) return '';
+    return HS.badges(state.habits, state.today).rank;
   } },
 ];
 
@@ -413,16 +420,131 @@ function habitHtml() {
         <span class="hb-nav"><button data-act="habit-month" data-d="-1" aria-label="前の月">◀</button><button data-act="habit-month" data-d="1" aria-label="次の月" ${ym >= today.slice(0, 7) ? 'disabled' : ''}>▶</button></span></div>
       <div class="hb-grid-wrap"><table class="hb-grid"><thead><tr><th class="hn"></th>${head}<th class="rate">達成率</th></tr></thead><tbody>${rows}</tbody></table></div>
       <p class="hb-legend">マスを押すと過去の日も付け外しできます。･＝対象外の曜日。達成率は今日までの対象日で計算。</p>
-      <div class="dadd"><button data-act="habit-edit">✎ 習慣を編集</button></div>
+      <div class="dadd"><button data-act="open-review">🏆 ふり返り</button><button data-act="habit-edit">✎ 習慣を編集</button></div>
     </section>${err}${where}
   </div>`;
 }
 
+// ---------- ふり返り（習慣の積み上げグラフ・バッジ・称号） ----------
+// 習慣の色は登録順で固定（暗い背景用に検証済みの8色。9件目以降とリストから外した習慣は「その他」）
+const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
+const OTHER = '#6b778a';
+
+function reviewHtml() {
+  const d = state.habits, today = state.today;
+  if (!d) return `<div class="habitpage"><p class="hb-empty">${state.habitError ? esc(state.habitError) : '読み込み中…'}</p></div>`;
+  if (!d.habits.length && !HS.firstDate(d)) {
+    return `<div class="habitpage"><section class="hb-card hb-empty"><h2>🏆 ふり返り</h2>
+      <p>習慣を登録してチェックすると、ここに積み上げグラフとバッジが貯まっていきます。</p>
+      <button class="primary" data-act="open-habit">✅ 習慣化管理へ</button></section></div>`;
+  }
+  const { kind, offset } = state.review;
+  const color = new Map(d.habits.slice(0, SERIES.length).map((h, i) => [h.name, SERIES[i]]));
+  const colorOf = n => color.get(n) || OTHER;
+  const r = HS.periodRange(kind, today, offset), p = HS.periodRange(kind, today, offset - 1);
+  // 途中の期間は、前の期間の「同じ日数まで」と比べる（月〜金と丸1週間を比べて減って見えないように）
+  const partial = r.to > today, pTo = partial ? L.addDays(p.from, Math.min(L.diffDays(r.from, today), L.diffDays(p.from, p.to))) : p.to;
+  const st = HS.periodStats(d, r.from, r.to, today), prev = HS.periodStats(d, p.from, pTo, today);
+  const b = HS.badges(d, today);
+  const unit = kind === 'week' ? '週' : '月';
+  const label = kind === 'week'
+    ? `${L.mdLabel(r.from)}〜${L.mdLabel(r.to)}${offset === 0 ? '（今週）' : ''}`
+    : `${r.from.slice(0, 4)}年${Number(r.from.slice(5, 7))}月${offset === 0 ? '（今月）' : ''}`;
+  const diff = st.done - prev.done;
+  const diffTxt = prev.done || st.done ? `<small class="${diff > 0 ? 'up' : ''}">前${unit}${partial ? 'の同じ日まで' : ''}より ${diff > 0 ? '▲' : diff < 0 ? '▼' : '±'}${Math.abs(diff)}</small>` : '';
+
+  // 積み上げ棒（日ごとの✅を習慣別に積む）
+  const max = Math.max(d.habits.length, ...st.days.map(x => x.done), 1);
+  const order = n => (color.has(n) ? d.habits.findIndex(h => h.name === n) : 99);
+  const bars = st.days.map(x => {
+    const w = L.weekday(x.date);
+    const segs = [...x.names].sort((a, c) => order(a) - order(c))
+      .map(n => `<i style="height:${(100 / max).toFixed(2)}%;background:${colorOf(n)}"></i>`).join('');
+    const tip = x.future ? '' : `${L.mdLabel(x.date)}：✅${x.done}${x.target ? `（対象${x.target}件中${x.targetDone}件）` : ''}${x.names.length ? `\n${x.names.join('・')}` : ''}`;
+    const perfect = x.target && x.targetDone === x.target;
+    return `<div class="rv-col ${x.future ? 'future' : ''} ${x.date === today ? 'tdy' : ''}" ${tip ? `data-tip="${esc(tip)}"` : ''}>
+      <div class="rv-bar">${segs}${perfect ? '<b class="star">⭐</b>' : ''}</div>
+      <span class="rv-x ${w === 0 ? 'sun' : w === 6 ? 'sat' : ''}">${kind === 'week' ? `${Number(x.date.slice(8))}<i>${L.WEEKDAYS[w]}</i>` : (Number(x.date.slice(8)) % 5 === 1 || x.date === today ? Number(x.date.slice(8)) : '')}</span></div>`;
+  }).join('');
+  const others = st.days.some(x => x.names.some(n => !color.has(n)));
+  const legend = [...color].map(([n, c]) => `<span><i style="background:${c}"></i>${esc(n)}</span>`).join('') + (others ? `<span><i style="background:${OTHER}"></i>その他</span>` : '');
+  const rows = st.perHabit.map(h => `<tr><th><i style="background:${colorOf(h.name)}"></i>${esc(h.name)}</th><td>${h.done} / ${h.target}</td>
+    <td class="rt">${h.rate == null ? '—' : `${h.rate}%`}${h.rate === 100 && h.target ? ' 💯' : ''}</td></tr>`).join('');
+
+  // この期間に獲得したバッジ（ご褒美）
+  const got = b.list.filter(x => x.earnedOn && x.earnedOn >= r.from && x.earnedOn <= r.to);
+  const gotHtml = got.length ? `<div class="rv-got"><b>🎉 この${unit}に獲得したバッジ</b>
+    <div>${got.map(x => `<span class="bdg on"><span class="ic">${x.icon}</span>${esc(x.title)}</span>`).join('')}</div></div>` : '';
+
+  const heat = HS.heatmap(d, today, 20);
+  const heatHtml = heat.map(w => `<div class="hm-w">${w.map(c => c.future ? '<i class="f"></i>'
+    : `<i class="l${c.level}" data-tip="${esc(`${L.mdLabel(c.date)}：✅${c.done}${c.target ? `（${c.targetDone}/${c.target}）` : ''}`)}"></i>`).join('')}</div>`).join('');
+  const months = heat.map((w, i) => { const m = w[0].date.slice(5, 7); return i === 0 || m !== heat[i - 1][0].date.slice(5, 7) ? `<span style="grid-column:${i + 1}">${Number(m)}月</span>` : ''; }).join('');
+
+  const earned = b.list.filter(x => x.earnedOn);
+  const badgeHtml = earned.map(x => `<div class="bdg on" data-tip="${esc(`${x.desc}\n${L.mdLabel(x.earnedOn)} 獲得`)}"><span class="ic">${x.icon}</span><b>${esc(x.title)}</b><small>${L.mdLabel(x.earnedOn)}</small></div>`).join('');
+  const nextHtml = b.next.map(x => `<div class="bdg next" data-tip="${esc(x.desc)}"><span class="ic">${x.icon}</span><b>${esc(x.title)}</b>
+    <small>あと ${x.goal - x.value}${x.kind === 'streak' ? '日' : x.kind === 'total' ? '回' : x.kind === 'pweek' ? '週' : x.kind === 'month' ? 'か月' : '日'}</small>
+    <span class="pg"><span style="width:${Math.min(100, Math.round((x.value / x.goal) * 100))}%"></span></span></div>`).join('');
+
+  return `<div class="habitpage reviewpage">
+    <section class="hb-card rv-rank">
+      <div class="rk-main"><span class="rk-label">称号</span><h2>${esc(b.rank)}</h2>
+        <small>${b.nextRank ? `次の「${esc(b.nextRank.title)}」まで バッジあと${b.nextRank.need}個` : '最高の称号です'}</small></div>
+      <div class="rk-stats">
+        <div><b>${b.count}</b><span>バッジ</span></div>
+        <div><b>${b.values.total}</b><span>累計✅</span></div>
+        <div><b>${b.values.streak}</b><span>最長連続(日)</span></div>
+        <div><b>${b.values.perfect}</b><span>⭐全部達成日</span></div>
+      </div>
+    </section>
+    <section class="hb-card">
+      <div class="hb-head"><span class="seg rv-seg"><button data-act="review-kind" data-kind="week" class="${kind === 'week' ? 'on' : ''}">週</button><button data-act="review-kind" data-kind="month" class="${kind === 'month' ? 'on' : ''}">月</button></span>
+        <h2 class="rv-label">${label}</h2>
+        <span class="hb-nav"><button data-act="review-move" data-d="-1" aria-label="前へ">◀</button><button data-act="review-move" data-d="1" aria-label="次へ" ${offset >= 0 ? 'disabled' : ''}>▶</button></span></div>
+      ${gotHtml}
+      <div class="rv-kpi">
+        <div><span>✅ 達成</span><b>${st.done}<small>回</small></b>${diffTxt}</div>
+        <div><span>達成率</span><b>${st.rate == null ? '—' : `${st.rate}<small>%</small>`}</b><small>${st.target ? `対象${st.target}件中${st.targetDone}件` : ''}</small></div>
+        <div><span>⭐ 全部達成した日</span><b>${st.perfectDays}<small>日</small></b></div>
+      </div>
+      <div class="rv-chart ${kind}">${bars}</div>
+      <div class="rv-legend">${legend}</div>
+      <table class="rv-table"><tbody>${rows}</tbody></table>
+    </section>
+    <section class="hb-card">
+      <div class="hb-head"><h2>🌱 積み上げ <small>直近20週・濃いほど達成</small></h2></div>
+      <div class="hm"><div class="hm-m">${months}</div><div class="hm-g">${heatHtml}</div></div>
+      <div class="hm-key">少 <i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i> 全部達成</div>
+    </section>
+    <section class="hb-card">
+      <div class="hb-head"><h2>🏅 バッジ <small>${b.count} / ${b.list.length}</small></h2></div>
+      ${earned.length ? `<div class="bdg-grid">${badgeHtml}</div>` : '<p class="hb-legend">最初のバッジは ✅ を1回付けると手に入ります。</p>'}
+      <h3 class="rv-sub">次のバッジ</h3>
+      <div class="bdg-grid">${nextHtml}</div>
+    </section>
+  </div>`;
+}
+
+// ふり返りのツールチップ（PCはマウスを乗せる・スマホはタップ）
+function showTip(el) {
+  let t = $('#tip');
+  if (!t) { t = document.createElement('div'); t.id = 'tip'; document.body.appendChild(t); }
+  if (!el) { t.hidden = true; return; }
+  t.textContent = el.dataset.tip; t.hidden = false;
+  const r = el.getBoundingClientRect(), w = t.offsetWidth;
+  t.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
+  t.style.top = `${Math.max(8, r.top - t.offsetHeight - 8)}px`;
+}
+document.addEventListener('pointerover', e => { if (e.pointerType === 'mouse') showTip(e.target.closest('[data-tip]')); });
+document.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') showTip(e.target.closest('[data-tip]')); });
+addEventListener('scroll', () => showTip(null), { passive: true });
+
 function goPage(page) {
-  state.page = page;
+  state.page = page; showTip(null);
   lsSet('techo-page', page);
   state.selected = null;
-  if (page === 'home') { render(); loadHome(); loadHabits(); } else if (page === 'habit') { render(); loadHabits(); } else load();
+  if (page === 'home') { render(); loadHome(); loadHabits(); } else if (page === 'habit' || page === 'review') { render(); loadHabits(); } else load();
 }
 
 // ---------- 描画 ----------
@@ -430,7 +552,7 @@ function render() {
   document.body.classList.toggle('on-home', state.page !== 'schedule');
   if (state.page !== 'schedule') {
     $('#banner').innerHTML = '';
-    $('#main').innerHTML = state.page === 'home' ? homeHtml() : habitHtml();
+    $('#main').innerHTML = state.page === 'home' ? homeHtml() : state.page === 'review' ? reviewHtml() : habitHtml();
     const wrap = $('.hb-grid-wrap'), td = wrap && wrap.querySelector('thead .tdy');
     if (td && wrap.scrollWidth > wrap.clientWidth) wrap.scrollLeft = Math.max(0, td.offsetLeft - wrap.clientWidth / 2); // 今日の列を見える位置に
     $('#selbar').hidden = true;
@@ -879,6 +1001,9 @@ document.addEventListener('click', async ev => {
       case 'open-schedule': return goPage('schedule');
       case 'edit-home': return editHome();
       case 'open-habit': return goPage('habit');
+      case 'open-review': return goPage('review');
+      case 'review-kind': state.review = { kind: a.dataset.kind, offset: 0 }; return render();
+      case 'review-move': state.review.offset = Math.min(0, state.review.offset + Number(a.dataset.d)); return render();
       case 'habit-toggle': return toggleHabit(a.dataset.name, a.dataset.date);
       case 'habit-edit': return editHabits();
       case 'habit-month': state.habitMonth = shiftMonth(state.habitMonth, Number(a.dataset.d)); return render();
