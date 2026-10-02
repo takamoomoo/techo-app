@@ -3,8 +3,9 @@ import * as L from './logic.js';
 import { GoogleBackend, consumeRedirectToken, readLoginLog, isStandalone } from './backend-google.js';
 import { DemoBackend } from './backend-demo.js';
 import { buildPrint } from './print.js';
-import { Notes, GitHubNotes, DemoNotes } from './obsidian.js';
+import { Notes, GitHubNotes, DemoNotes, LocalFileStore } from './obsidian.js';
 import * as O from './obsidian-md.js';
+import * as H from './habit-md.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -53,8 +54,9 @@ const state = {
   offline: false, cachedAt: null, needLogin: false, loading: false, error: '', selected: null,
   notes: new Map(), notesWeek: null, notesAt: 0, notesError: '', notesOffline: false,
   drafts: lsGet('techo-drafts') || {}, // 入力途中のメモ（保存前）は端末に残す
-  page: location.hash === '#home' || lsGet('techo-page') === 'home' ? 'home' : 'schedule', // #home か最後に開いていた画面
+  page: ['home', 'habit'].find(p => location.hash === `#${p}`) || (['home', 'habit'].includes(lsGet('techo-page')) ? lsGet('techo-page') : 'schedule'), // #home・#habit か最後に開いていた画面
   home: lsGet('techo-home-cache'), homeSha: null, homeError: '', cover: lsGet('techo-cover'),
+  habits: null, habitMonth: L.ymd(new Date()).slice(0, 7), habitError: '',
 };
 let backend = makeBackend();
 let notes = makeNotes();
@@ -216,7 +218,11 @@ function moveTask(t, date) {
 const MENU = [
   { act: 'open-schedule', icon: '📅', title: 'スケジュール帳', desc: '週・日表示／Googleカレンダー・Obsidian連携' },
   { icon: '⏰', title: '大きな時計', desc: '準備中', soon: true },
-  { icon: '✅', title: '習慣化管理', desc: '準備中', soon: true },
+  { act: 'open-habit', icon: '✅', title: '習慣化管理', desc: '毎日のチェック・連続日数・達成率', badge: () => {
+    if (!state.habits || !state.habits.habits.length) return '';
+    const c = H.todayCount(state.habits, state.today);
+    return c.total ? `今日 ${c.done}/${c.total}` : '';
+  } },
 ];
 
 function homeHtml() {
@@ -243,7 +249,7 @@ function homeHtml() {
       <h3>MENU <span>メニュー</span></h3>
       ${MENU.map(m => m.soon
         ? `<div class="mi soon"><span class="ic">${m.icon}</span><span><b>${esc(m.title)}</b><small>${esc(m.desc)}</small></span></div>`
-        : `<button class="mi" data-act="${m.act}"><span class="ic">${m.icon}</span><span><b>${esc(m.title)}</b><small>${esc(m.desc)}</small></span><span class="go">›</span></button>`).join('')}
+        : `<button class="mi" data-act="${m.act}"><span class="ic">${m.icon}</span><span><b>${esc(m.title)}</b><small>${esc(m.desc)}</small></span>${m.badge && m.badge() ? `<span class="badge">${esc(m.badge())}</span>` : ''}<span class="go">›</span></button>`).join('')}
       ${state.homeError ? `<p class="note">${esc(state.homeError)}</p>` : ''}
       ${!notes ? '<p class="note">⚙でGitHubトークンを入れると、スローガンがObsidianに保存されPCとスマホで共有されます。</p>' : ''}
     </aside>
@@ -297,19 +303,137 @@ function editHome() {
   }, '保存');
 }
 
+// ---------- 習慣化管理（手帳アプリ/習慣.md） ----------
+// GitHubトークンが無ければこの端末だけに保存
+const habitStore = () => notes || new Notes(new LocalFileStore());
+const shiftMonth = (ym, d) => { const t = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1 + d, 1); return L.ymd(t).slice(0, 7); };
+let habitQueue = Promise.resolve(); // 連打しても書込みは1つずつ
+const habitPending = []; // 画面には反映済みで、まだ保存していない変更
+
+async function loadHabits() {
+  state.habitError = '';
+  try {
+    state.habits = await habitStore().loadHabits();
+    lsSet('techo-habit-cache', serializeHabits(state.habits));
+  } catch (e) {
+    const c = lsGet('techo-habit-cache');
+    state.habits = c ? { habits: c.habits, done: Object.fromEntries(Object.entries(c.done).map(([d, a]) => [d, new Set(a)])) } : null;
+    state.habitError = `Obsidianから読めませんでした（${e.message}）${c ? '。保存済みの内容を表示しています' : ''}`;
+  }
+  render();
+}
+const serializeHabits = d => ({ habits: d.habits, done: Object.fromEntries(Object.entries(d.done).map(([k, v]) => [k, [...v]])) });
+
+function habitWrite(change, message) {
+  change(state.habits); render(); // 先に画面へ反映
+  habitPending.push(change);
+  const months = [state.today.slice(0, 7)];
+  habitQueue = habitQueue.then(async () => {
+    try {
+      const saved = await habitStore().updateHabits(change, months, message);
+      habitPending.shift();
+      habitPending.forEach(f => f(saved)); // 後ろに控えている変更は画面に残す
+      state.habits = saved;
+      lsSet('techo-habit-cache', serializeHabits(saved));
+    } catch (e) {
+      habitPending.length = 0;
+      toast(`保存できませんでした（${e.message}）`);
+      await loadHabits();
+    }
+    render();
+  });
+  return habitQueue;
+}
+
+function toggleHabit(name, date) {
+  if (!state.habits || date > state.today) return;
+  const on = !H.isDone(state.habits, name, date);
+  if (on && date === state.today && navigator.vibrate) navigator.vibrate(15);
+  return habitWrite(d => H.setDone(d, name, date, on), `${date} ${name} ${on ? '✅' : '取消'}`);
+}
+
+function editHabits() {
+  const list = (state.habits && state.habits.habits) || [];
+  openModal('習慣を編集', `
+    <label>習慣（1行1件）<textarea name="lines" rows="8" placeholder="早起き（5:30） ｜ 毎日&#10;読書15分 ｜ 平日&#10;ストレッチ ｜ 月水金">${esc(list.map(h => `${h.name} ｜ ${h.days}`).join('\n'))}</textarea></label>
+    <p class="note">「名前 ｜ 曜日」で書きます。曜日は 毎日／平日／土日／月水金 など（省略すると毎日）。<br>
+    名前を変えると別の習慣として数え直します（これまでの記録は Obsidian の表に残ります）。<br>
+    ${notes ? 'Obsidian の「手帳アプリ/習慣.md」に保存され、PCとスマホで共有されます。' : 'この端末だけに保存されます（⚙でGitHubトークンを入れるとObsidianに保存）。'}</p>`,
+  async fd => {
+    const text = String(fd.get('lines'));
+    if (!state.habits) state.habits = { habits: [], done: {} };
+    habitWrite(d => { d.habits = H.parseHabitLines(text, d.habits, state.today); return d; }, '習慣リスト更新');
+  }, '保存');
+}
+
+function habitHtml() {
+  const d = state.habits, today = state.today, ym = state.habitMonth;
+  const err = state.habitError ? `<p class="note">${esc(state.habitError)}</p>` : '';
+  const where = notes ? '' : '<p class="note">この端末だけに保存中。⚙でGitHubトークンを入れると Obsidian に保存されPCとスマホで共有されます。</p>';
+  if (!d) return `<div class="habitpage"><p class="hb-empty">${state.habitError ? '' : '読み込み中…'}</p>${err}</div>`;
+  if (!d.habits.length) {
+    return `<div class="habitpage"><section class="hb-card hb-empty">
+      <h2>✅ 習慣化管理</h2><p>続けたい習慣を登録しましょう。毎日チェックすると、連続日数と達成率が出ます。</p>
+      <button class="primary" data-act="habit-edit">＋ 習慣を登録</button></section>${err}${where}</div>`;
+  }
+  const c = H.todayCount(d, today);
+  const wd = L.WEEKDAYS[L.weekday(today)];
+  const todays = d.habits.map(h => {
+    const target = H.isTarget(h, today) && (!h.start || today >= h.start);
+    const done = H.isDone(d, h.name, today), s = H.streak(d, h, today);
+    return `<button class="hb-today ${done ? 'done' : ''} ${target ? '' : 'off'}" data-act="habit-toggle" data-name="${esc(h.name)}" data-date="${today}">
+      <span class="ck">${done ? '✓' : ''}</span>
+      <span class="nm"><b>${esc(h.name)}</b><small>${target ? esc(h.days) : `今日はお休み（${esc(h.days)}）`}</small></span>
+      <span class="st">${s ? `🔥<b>${s}</b>日` : ''}</span></button>`;
+  }).join('');
+
+  const dates = H.monthDates(ym);
+  const head = dates.map(x => {
+    const w = L.weekday(x);
+    return `<th class="${w === 0 ? 'sun' : w === 6 ? 'sat' : ''} ${x === today ? 'tdy' : ''}">${Number(x.slice(8))}<i>${L.WEEKDAYS[w]}</i></th>`;
+  }).join('');
+  const rows = d.habits.map(h => {
+    const r = H.monthRate(d, h, ym, today);
+    return `<tr><th class="hn">${esc(h.name)}</th>${dates.map(x => {
+      const st = H.cellState(d, h, x, today);
+      return `<td class="c-${st} ${x === today ? 'tdy' : ''}">${st === 'future' || st === 'before'
+        ? '' : `<button data-act="habit-toggle" data-name="${esc(h.name)}" data-date="${x}" aria-label="${esc(h.name)} ${x}">${st === 'done' ? '✓' : st === 'off' ? '･' : ''}</button>`}</td>`;
+    }).join('')}<td class="rate">${r.rate == null ? '—' : `${r.rate}%`}</td></tr>`;
+  }).join('');
+  const [y, m] = ym.split('-').map(Number);
+
+  return `<div class="habitpage">
+    <section class="hb-card">
+      <div class="hb-head"><h2>✅ 今日の習慣 <small>${Number(today.slice(5, 7))}/${Number(today.slice(8))}（${wd}）</small></h2>
+        <span class="hb-count">${c.total ? `${c.done} / ${c.total}` : ''}</span></div>
+      ${c.total && c.done === c.total ? '<p class="hb-clear">🎉 今日の習慣はすべて達成！</p>' : ''}
+      <div class="hb-list">${todays}</div>
+    </section>
+    <section class="hb-card">
+      <div class="hb-head"><h2>${y}年${m}月</h2>
+        <span class="hb-nav"><button data-act="habit-month" data-d="-1" aria-label="前の月">◀</button><button data-act="habit-month" data-d="1" aria-label="次の月" ${ym >= today.slice(0, 7) ? 'disabled' : ''}>▶</button></span></div>
+      <div class="hb-grid-wrap"><table class="hb-grid"><thead><tr><th class="hn"></th>${head}<th class="rate">達成率</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="hb-legend">マスを押すと過去の日も付け外しできます。･＝対象外の曜日。達成率は今日までの対象日で計算。</p>
+      <div class="dadd"><button data-act="habit-edit">✎ 習慣を編集</button></div>
+    </section>${err}${where}
+  </div>`;
+}
+
 function goPage(page) {
   state.page = page;
   lsSet('techo-page', page);
   state.selected = null;
-  if (page === 'home') { render(); loadHome(); } else load();
+  if (page === 'home') { render(); loadHome(); loadHabits(); } else if (page === 'habit') { render(); loadHabits(); } else load();
 }
 
 // ---------- 描画 ----------
 function render() {
-  document.body.classList.toggle('on-home', state.page === 'home');
-  if (state.page === 'home') {
+  document.body.classList.toggle('on-home', state.page !== 'schedule');
+  if (state.page !== 'schedule') {
     $('#banner').innerHTML = '';
-    $('#main').innerHTML = homeHtml();
+    $('#main').innerHTML = state.page === 'home' ? homeHtml() : habitHtml();
+    const wrap = $('.hb-grid-wrap'), td = wrap && wrap.querySelector('thead .tdy');
+    if (td && wrap.scrollWidth > wrap.clientWidth) wrap.scrollLeft = Math.max(0, td.offsetLeft - wrap.clientWidth / 2); // 今日の列を見える位置に
     $('#selbar').hidden = true;
     return;
   }
@@ -675,6 +799,7 @@ function settingsForm() {
     state.notesWeek = null;
     closeModal();
     if (state.page === 'home') loadHome();
+    if (state.page !== 'schedule') loadHabits();
     await load();
   }, '保存', settings.mode !== 'google' ? '<button type="button" data-reset>お試しデータを初期化</button>'
     : '<button type="button" data-qr>📱 スマホへ設定を送る</button>');
@@ -754,6 +879,10 @@ document.addEventListener('click', async ev => {
       case 'home': return goPage('home');
       case 'open-schedule': return goPage('schedule');
       case 'edit-home': return editHome();
+      case 'open-habit': return goPage('habit');
+      case 'habit-toggle': return toggleHabit(a.dataset.name, a.dataset.date);
+      case 'habit-edit': return editHabits();
+      case 'habit-month': state.habitMonth = shiftMonth(state.habitMonth, Number(a.dataset.d)); return render();
       case 'prev': return go(-1);
       case 'next': return go(1);
       case 'today': state.anchor = L.ymd(new Date()); state.selected = null; return load();
@@ -825,9 +954,13 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && L.ymd(new Date()) !== state.today) load();
+  if (document.visibilityState === 'visible' && L.ymd(new Date()) !== state.today) {
+    if (state.page !== 'schedule') { state.today = L.ymd(new Date()); state.habitMonth = state.today.slice(0, 7); loadHabits(); }
+    load();
+  }
 });
 if (state.page === 'home') loadHome();
+if (state.page !== 'schedule') loadHabits();
 load().then(() => {
   if (imported && !isStandalone()) offerImportCopy();
   else if (imported) toast('設定を取り込みました');

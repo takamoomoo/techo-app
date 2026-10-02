@@ -1,5 +1,6 @@
 // Obsidian デイリーノートの読み書き（GitHub Contents API 経由。obsidian-git が PC 側へ同期する）
 import * as O from './obsidian-md.js';
+import * as H from './habit-md.js';
 
 const enc = path => path.split('/').map(encodeURIComponent).join('/');
 
@@ -93,6 +94,20 @@ export class DemoNotes {
   async getBase64() { return null; } // お試しでは表紙写真なし（グラデーション表示）
 }
 
+// GitHubトークンが無いとき用（この端末だけに保存。習慣など1ファイル単位の機能で使う）
+export class LocalFileStore extends DemoNotes {
+  constructor(key = 'techo-local-files-v1') { super(); this.key = key; }
+  get name() { return 'local'; }
+  load() { try { return JSON.parse(localStorage.getItem(this.key)) || {}; } catch { return {}; } }
+  async getFile(path) { const f = this.load()[path]; return f ? { ...f } : null; }
+  async putFile(path, text, sha) {
+    const all = this.load();
+    if ((all[path] && all[path].sha) !== sha && !(sha == null && !all[path])) { const e = new Error('conflict'); e.status = 409; throw e; }
+    all[path] = { text, sha: Math.random().toString(36).slice(2) };
+    try { localStorage.setItem(this.key, JSON.stringify(all)); } catch { /* 無視 */ }
+  }
+}
+
 export class Notes {
   constructor(store) { this.store = store; this.template = null; }
   get name() { return this.store.name; }
@@ -127,6 +142,25 @@ export class Notes {
     await this.store.putFile(O.HOME_PATH, O.formatHome(home), f && f.sha, 'techo: HOME（今月のスローガン）更新');
     return this.loadHome();
   }
+  // ---- 習慣（手帳アプリ/習慣.md）。チェック1回ごとに読み直して反映するので Obsidian 側の変更を消さない ----
+  async loadHabits() {
+    const f = await this.store.getFile(H.HABIT_PATH);
+    return H.parseHabits(f && f.text);
+  }
+  async updateHabits(change, months, message) {
+    for (let attempt = 0; ; attempt++) {
+      const f = await this.store.getFile(H.HABIT_PATH);
+      const data = change(H.parseHabits(f && f.text));
+      try {
+        await this.store.putFile(H.HABIT_PATH, H.formatHabits(data, months), f && f.sha, `techo: 習慣 ${message}`);
+        return data;
+      } catch (e) {
+        if ((e.status === 409 || e.status === 422) && attempt < 2) continue;
+        throw e;
+      }
+    }
+  }
+
   async loadCover() {
     const b64 = await this.store.getBase64(O.COVER_PATH);
     return b64 ? `data:image/jpeg;base64,${b64}` : null;

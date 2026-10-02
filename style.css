@@ -263,3 +263,57 @@ body.on-home main { padding-top: 18px; }
   .cv-brand { left: 20px; top: 16px; }
   .menu { width: 100%; }
 }
+
+/* ---------- 習慣化管理（HOME と同じ紺×金） ---------- */
+.menu .mi .badge { margin-left: auto; font-size: 12px; font-weight: 700; color: #0c1624; background: #e6b86a; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.menu .mi .badge + .go { margin-left: 4px; }
+.habitpage { max-width: 980px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; color: #f3ede2; }
+.hb-card { background: #13233a; border: 1px solid rgba(230,184,106,.25); border-radius: 14px; padding: 18px 20px; box-shadow: 0 12px 30px rgba(0,0,0,.35); }
+.hb-card h2 { margin: 0; font: 800 20px "Shippori Mincho B1", "Yu Mincho", serif; letter-spacing: .12em; }
+.hb-card h2 small { font: 500 13px system-ui, sans-serif; color: #aeb8c6; letter-spacing: .05em; margin-left: 8px; }
+.hb-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.hb-count { margin-left: auto; font: 700 22px "Cinzel", Georgia, serif; color: #e6b86a; letter-spacing: .1em; }
+.hb-nav { margin-left: auto; display: flex; gap: 6px; }
+.hb-card button { background: transparent; color: #f3ede2; border-color: rgba(230,184,106,.35); }
+.hb-card button.primary { background: #e6b86a; color: #0c1624; border-color: #e6b86a; font-weight: 700; }
+.hb-clear { margin: -4px 0 12px; color: #e6b86a; font-weight: 700; }
+.hb-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.hb-card .hb-today { display: flex; align-items: center; gap: 14px; text-align: left; padding: 12px 14px; min-height: 64px;
+  background: #0f1d31; border: 1px solid rgba(230,184,106,.25); border-radius: 12px; transition: background .15s, border-color .15s; }
+.hb-card .hb-today:hover { border-color: #e6b86a; }
+.hb-today .ck { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 2px solid #e6b86a; display: grid; place-items: center;
+  font-size: 20px; font-weight: 800; color: #0c1624; }
+.hb-today.done { background: #1d3354; border-color: #e6b86a; }
+.hb-today.done .ck { background: #e6b86a; }
+.hb-today.done .nm b { color: #fff; }
+.hb-today.off { opacity: .5; }
+.hb-today .nm b { display: block; font-size: 16px; letter-spacing: .03em; }
+.hb-today .nm small { display: block; font-size: 12px; color: #aeb8c6; margin-top: 2px; }
+.hb-today .st { margin-left: auto; font-size: 13px; color: #aeb8c6; white-space: nowrap; }
+.hb-today .st b { font: 700 18px "Cinzel", Georgia, serif; color: #e6b86a; margin: 0 2px; }
+.hb-grid-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.hb-grid { border-collapse: collapse; font-size: 12px; }
+.hb-grid th, .hb-grid td { padding: 0; text-align: center; border-bottom: 1px solid rgba(255,255,255,.07); }
+.hb-grid thead th { font-weight: 600; color: #cfd6e2; padding: 2px 0 6px; min-width: 26px; line-height: 1.1; }
+.hb-grid thead th i { display: block; font-style: normal; font-size: 10px; color: #8794a6; }
+.hb-grid thead th.sun, .hb-grid thead th.sun i { color: #f08a7a; }
+.hb-grid thead th.sat, .hb-grid thead th.sat i { color: #7fb0f0; }
+.hb-grid .tdy { background: rgba(230,184,106,.14); }
+.hb-grid th.hn { position: sticky; left: 0; z-index: 1; background: #13233a; text-align: left; padding: 6px 10px 6px 0; font-weight: 700; color: #f3ede2;
+  white-space: nowrap; max-width: 9em; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.hb-grid td button { width: 24px; height: 24px; min-height: 0; padding: 0; margin: 2px 1px; border-radius: 6px; font-size: 14px; font-weight: 800; line-height: 1; }
+.hb-grid td.c-done button { background: #e6b86a; color: #0c1624; border-color: #e6b86a; }
+.hb-grid td.c-miss button { border-color: rgba(230,184,106,.3); }
+.hb-grid td.c-off button { border-color: transparent; color: #56637a; }
+.hb-grid td.c-before, .hb-grid td.c-future { color: transparent; }
+.hb-grid .rate { padding-left: 12px; font: 700 14px "Cinzel", Georgia, serif; color: #e6b86a; white-space: nowrap; }
+.hb-grid thead .rate { font: 600 11px system-ui, sans-serif; color: #aeb8c6; }
+.hb-legend { font-size: 12px; color: #8794a6; margin: 10px 0 0; }
+.hb-card .dadd { margin-top: 12px; display: flex; justify-content: flex-end; }
+.hb-empty { text-align: center; }
+.hb-empty p { color: #cfd6e2; }
+.habitpage > .note { font-size: 12px; color: #aeb8c6; background: transparent; border-left-color: #e6b86a; }
+@media (max-width: 760px) {
+  .hb-card { padding: 14px 12px; }
+  .hb-list { grid-template-columns: 1fr; }
+}
