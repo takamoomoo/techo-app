@@ -967,8 +967,13 @@ async function showSettingsQr() {
       <div class="qrbox">${qr.createSvgTag({ cellSize: 5, margin: 4, scalable: true })}</div>
       <p class="note">Safari で使う場合：iPhone のカメラで読み取り、表示された「takamoomoo.github.io」を開くと設定が入ります。<br>
       ホーム画面のアプリで使う場合：カメラの表示を長押しして「リンクをコピー」→ ホーム画面のアプリの ⚙設定「設定コードを貼り付け」に貼って保存。<br>
-      ⚠ このQRには GitHub トークンが入っています。人に見せず、読み取ったらすぐ閉じてください。</p>`,
-    async () => {}, '閉じる');
+      PC の別のブラウザへ移す場合：「リンクをコピー」→ そのブラウザのアドレス欄に貼って開くか、⚙設定「設定コードを貼り付け」に貼って保存。<br>
+      ⚠ このQR・リンクには GitHub トークンが入っています。人に見せず、使ったらすぐ閉じてください。</p>`,
+    async () => {}, '閉じる', '<button type="button" data-copy>リンクをコピー</button>');
+    $('#modal [data-copy]').onclick = async () => {
+      try { await navigator.clipboard.writeText(url); toast('コピーしました。移したいブラウザに貼ってください'); }
+      catch { toast('コピーできませんでした'); }
+    };
   } catch (e) { toast(e.message); }
 }
 
