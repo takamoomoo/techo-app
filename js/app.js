@@ -7,6 +7,7 @@ import { Notes, GitHubNotes, DemoNotes, LocalFileStore } from './obsidian.js';
 import * as O from './obsidian-md.js';
 import * as H from './habit-md.js';
 import * as HS from './habit-stats.js';
+import * as V from './vault.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -40,7 +41,7 @@ function readImport() {
 }
 const redirected = consumeRedirectToken(); // Google ログイン（ページ移動方式）から戻ってきた場合
 const imported = readImport();
-const SUB_PAGES = ['home', 'habit', 'review']; // スケジュール帳以外の画面（紺の背景・HOMEボタンのみ）
+const SUB_PAGES = ['home', 'habit', 'review', 'notes']; // スケジュール帳以外の画面（紺の背景・HOMEボタンのみ）
 const settings = {
   mode: location.hostname.endsWith('github.io') ? 'google' : 'demo', clientId: DEFAULT_CLIENT_ID,
   ghToken: '', ghRepo: 'takamoomoo/takayuki-brain', ghBranch: 'main',
@@ -60,6 +61,7 @@ const state = {
   home: lsGet('techo-home-cache'), homeSha: null, homeError: '', cover: lsGet('techo-cover'),
   habits: null, habitMonth: L.ymd(new Date()).slice(0, 7), habitError: '',
   review: { kind: 'week', offset: 0 },
+  vault: { files: (lsGet('techo-vault-tree') || {}).files || null, at: 0, truncated: false, folder: '', note: null, text: null, q: '', loading: false, error: '', noteError: '' },
 };
 let backend = makeBackend();
 let notes = makeNotes();
@@ -225,6 +227,7 @@ const MENU = [
     const c = H.todayCount(state.habits, state.today);
     return c.total ? `今日 ${c.done}/${c.total}` : '';
   } },
+  { act: 'open-notes', icon: '📚', title: 'ノート', desc: 'Obsidian のノートをフォルダごとに読む' },
   { act: 'open-review', icon: '🏆', title: 'ふり返り', desc: '積み上げグラフ・バッジ・称号', badge: () => {
     if (!state.habits || !state.habits.habits.length) return '';
     return HS.badges(state.habits, state.today).rank;
@@ -558,11 +561,136 @@ document.addEventListener('pointerover', e => { if (e.pointerType === 'mouse') s
 document.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') showTip(e.target.closest('[data-tip]')); });
 addEventListener('scroll', () => showTip(null), { passive: true });
 
+// ---------- ノート閲覧（Obsidian を読むだけ。書き換えはしない） ----------
+const VAULT_TTL = 10 * 60 * 1000; // フォルダ一覧は10分ごとに取り直す
+async function loadScript(src, globalName) {
+  if (window[globalName]) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = () => reject(new Error('表示用の部品を読み込めません（ネット接続を確認）'));
+    document.head.appendChild(s);
+  });
+}
+
+async function loadVault(force = false) {
+  const v = state.vault;
+  if (!notes) { v.error = ''; render(); return; }
+  if (!force && v.files && Date.now() - v.at < VAULT_TTL) return;
+  v.loading = true; v.error = ''; render();
+  try {
+    const t = await notes.listTree();
+    v.files = V.filterTree(t.entries); v.truncated = t.truncated; v.at = Date.now();
+    lsSet('techo-vault-tree', { files: v.files, at: v.at });
+  } catch (e) {
+    const c = lsGet('techo-vault-tree');
+    if (c) { v.files = c.files; v.at = 0; }
+    v.error = `Obsidianの一覧を読めませんでした（${e.message}）${c ? '。前回の一覧を表示しています' : ''}`;
+  } finally { v.loading = false; render(); }
+}
+
+// folder / note を開く。ブラウザの「戻る」でも戻れるように履歴に積む
+function vaultGo(next, push = true) {
+  const v = state.vault;
+  Object.assign(v, next);
+  if (next.note !== undefined) v.text = null;
+  if (push) history.pushState({ vault: { folder: v.folder, note: v.note } }, '', '#notes');
+  render();
+  if (v.note && next.note) openNote(v.note);
+  if (next.note || next.folder !== undefined) window.scrollTo(0, 0);
+}
+addEventListener('popstate', e => {
+  if (state.page === 'notes' && e.state && e.state.vault) vaultGo({ ...e.state.vault, q: '' }, false);
+});
+
+async function openNote(path) {
+  const v = state.vault;
+  v.noteError = '';
+  try {
+    const [f] = await Promise.all([notes.readNote(path),
+      loadScript('https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js', 'marked'),
+      loadScript('https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js', 'DOMPurify')]);
+    if (v.note !== path) return; // 読み込み中に別のノートへ移った
+    if (!f) throw new Error('ノートが見つかりません（移動・削除された可能性）');
+    v.text = f.text;
+  } catch (e) { v.noteError = e.message; }
+  render();
+}
+
+function noteBodyHtml(path, text) {
+  const { meta, body } = V.splitFrontmatter(text);
+  const md = V.obsidianToMarkdown(body, state.vault.files || [], path);
+  const html = window.DOMPurify.sanitize(window.marked.parse(md, { gfm: true, breaks: true }), { ADD_ATTR: ['target'] });
+  const metaHtml = meta.length ? `<details class="vl-meta"><summary>プロパティ（${meta.length}）</summary><table>${meta.map(([k, val]) => `<tr><th>${esc(k)}</th><td>${esc(val)}</td></tr>`).join('')}</table></details>` : '';
+  return metaHtml + html;
+}
+
+// 本文中の画像（![[...]]）を後から読み込む
+async function loadVaultImages() {
+  for (const img of document.querySelectorAll('.vl-body img[data-vault]:not([src])')) {
+    const p = img.dataset.vault;
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw='; // 二重読み込み防止
+    try {
+      const b64 = await notes.readImage(p);
+      if (b64) img.src = `data:image/${/\.svg$/i.test(p) ? 'svg+xml' : (p.split('.').pop().toLowerCase().replace('jpg', 'jpeg'))};base64,${b64}`;
+      else img.replaceWith(Object.assign(document.createElement('span'), { className: 'vl-missing', textContent: `🖼 ${p.split('/').pop()}（大きすぎて表示できません）` }));
+    } catch { img.alt = `🖼 ${p.split('/').pop()}`; }
+  }
+}
+
+function crumbsHtml(folder, notePath) {
+  const parts = folder ? folder.split('/') : [];
+  const items = [`<button data-act="vault-folder" data-path="">📚 Obsidian</button>`,
+    ...parts.map((p, i) => `<button data-act="vault-folder" data-path="${esc(parts.slice(0, i + 1).join('/'))}">${esc(p)}</button>`)];
+  if (notePath) items.push(`<span>${esc(V.baseName(notePath))}</span>`);
+  return `<nav class="vl-crumbs">${items.join('<i>›</i>')}</nav>`;
+}
+
+function vaultHtml() {
+  const v = state.vault;
+  if (!notes) {
+    return `<div class="habitpage"><div class="hb-warn">📚 ノートを見るには <button data-act="settings">⚙設定</button> で GitHub アクセストークンを入れてください。</div></div>`;
+  }
+  const files = v.files || [];
+  const err = v.error ? `<p class="note">${esc(v.error)}</p>` : '';
+  const todayPath = `01_inbox/${state.today}.md`;
+  const hasToday = files.some(f => f.path === todayPath);
+  const results = v.q ? V.searchNotes(files, v.q) : null;
+  const { folders, notes: list } = V.listFolder(files, v.folder);
+  const noteItem = p => `<button class="vl-item ${p === v.note ? 'on' : ''}" data-act="vault-note" data-path="${esc(p)}"><span class="ic">📄</span>
+    <span class="nm">${esc(V.baseName(p))}${results ? `<small>${esc(V.parentOf(p) || '（トップ）')}</small>` : ''}</span></button>`;
+  const listHtml = results
+    ? `<p class="vl-count">「${esc(v.q)}」${results.length}件${results.length >= 60 ? '（先頭60件）' : ''}</p>${results.map(noteItem).join('') || '<p class="vl-count">見つかりません</p>'}`
+    : `${crumbsHtml(v.folder)}
+      ${folders.map(f => `<button class="vl-item folder" data-act="vault-folder" data-path="${esc(f.path)}"><span class="ic">📁</span><span class="nm">${esc(f.name)}</span><span class="ct">${f.count}</span></button>`).join('')}
+      ${list.map(noteItem).join('')}
+      ${!folders.length && !list.length ? `<p class="vl-count">${v.loading ? '読み込み中…' : 'ノートがありません'}</p>` : ''}`;
+  const side = `<aside class="vl-side">
+    <div class="vl-tools">
+      <input type="search" class="vl-search" placeholder="🔍 ノート名で探す" value="${esc(v.q)}" data-vault-search>
+      <button data-act="vault-reload" title="一覧を取り直す" aria-label="一覧を取り直す">↻</button>
+    </div>
+    ${hasToday ? `<button class="vl-today" data-act="vault-note" data-path="${esc(todayPath)}">📅 今日のデイリーノート</button>` : ''}
+    <div class="vl-list">${listHtml}</div>${err}
+  </aside>`;
+  let reader = '<section class="vl-reader empty"><p>📖 左の一覧からノートを選んでください</p></section>';
+  if (v.note) {
+    const body = v.noteError ? `<p class="note">${esc(v.noteError)}</p>` : v.text == null ? '<p class="vl-count">読み込み中…</p>' : noteBodyHtml(v.note, v.text);
+    const obs = `obsidian://open?vault=${encodeURIComponent(settings.ghRepo.split('/').pop())}&file=${encodeURIComponent(v.note.replace(/\.md$/i, ''))}`;
+    reader = `<section class="vl-reader">
+      <div class="vl-rhead"><button class="vl-back" data-act="vault-back">‹ 一覧</button>${crumbsHtml(V.parentOf(v.note), v.note)}</div>
+      <h1 class="vl-title">${esc(V.baseName(v.note))}</h1>
+      <div class="vl-body">${body}</div>
+      <p class="vl-foot"><a href="${esc(obs)}">Obsidian アプリで開く</a>（読むだけの画面です。書き換えは Obsidian で）</p>
+    </section>`;
+  }
+  return `<div class="vaultpage ${v.note ? 'reading' : ''}">${side}${reader}</div>`;
+}
+
 function goPage(page) {
   state.page = page; showTip(null);
   lsSet('techo-page', page);
   state.selected = null;
-  if (page === 'home') { render(); loadHome(); loadHabits(); } else if (page === 'habit' || page === 'review') { render(); loadHabits(); } else load();
+  if (page === 'home') { render(); loadHome(); loadHabits(); } else if (page === 'habit' || page === 'review') { render(); loadHabits(); } else if (page === 'notes') { render(); loadVault(); } else load();
 }
 
 // ---------- 描画 ----------
@@ -570,7 +698,13 @@ function render() {
   document.body.classList.toggle('on-home', state.page !== 'schedule');
   if (state.page !== 'schedule') {
     $('#banner').innerHTML = '';
-    $('#main').innerHTML = state.page === 'home' ? homeHtml() : state.page === 'review' ? reviewHtml() : habitHtml();
+    const prevSearch = document.activeElement && document.activeElement.matches('[data-vault-search]') ? document.activeElement.selectionStart : null;
+    $('#main').innerHTML = state.page === 'home' ? homeHtml() : state.page === 'review' ? reviewHtml() : state.page === 'notes' ? vaultHtml() : habitHtml();
+    if (state.page === 'notes') {
+      loadVaultImages();
+      const box = $('[data-vault-search]');
+      if (box && prevSearch != null) { box.focus(); box.setSelectionRange(prevSearch, prevSearch); } // 入力中の検索欄を保つ
+    }
     const wrap = $('.hb-grid-wrap'), td = wrap && wrap.querySelector('thead .tdy');
     if (td && wrap.scrollWidth > wrap.clientWidth) wrap.scrollLeft = Math.max(0, td.offsetLeft - wrap.clientWidth / 2); // 今日の列を見える位置に
     $('#selbar').hidden = true;
@@ -938,7 +1072,8 @@ function settingsForm() {
     state.notesWeek = null;
     closeModal();
     if (state.page === 'home') loadHome();
-    if (state.page !== 'schedule') loadHabits();
+    if (state.page !== 'schedule' && state.page !== 'notes') loadHabits();
+    if (state.page === 'notes') loadVault(true);
     await load();
   }, '保存', settings.mode !== 'google' ? '<button type="button" data-reset>お試しデータを初期化</button>'
     : '<button type="button" data-qr>📱 スマホへ設定を送る</button>');
@@ -1025,6 +1160,11 @@ document.addEventListener('click', async ev => {
       case 'edit-home': return editHome();
       case 'open-habit': return goPage('habit');
       case 'open-review': return goPage('review');
+      case 'open-notes': return goPage('notes');
+      case 'vault-folder': return vaultGo({ folder: a.dataset.path, note: null, q: '' });
+      case 'vault-note': return vaultGo({ note: a.dataset.path, folder: V.parentOf(a.dataset.path) });
+      case 'vault-back': return vaultGo({ note: null });
+      case 'vault-reload': return loadVault(true);
       case 'review-kind': state.review = { kind: a.dataset.kind, offset: 0 }; return render();
       case 'review-move': state.review.offset = Math.min(0, state.review.offset + Number(a.dataset.d)); return render();
       case 'habit-toggle': return toggleHabit(a.dataset.name, a.dataset.date);
@@ -1074,7 +1214,15 @@ document.addEventListener('touchend', e => {
   if (Math.abs(dx) > 70 && Math.abs(dy) < 50) go(dx < 0 ? 1 : -1);
 }, { passive: true });
 
+// ノート本文の [[リンク]]（href="#notes=…"）はアプリ内で開く
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[data-note]');
+  if (!a) return;
+  e.preventDefault(); e.stopPropagation();
+  vaultGo({ note: a.dataset.note, folder: V.parentOf(a.dataset.note) });
+}, true);
 document.addEventListener('input', e => {
+  if (e.target.matches && e.target.matches('[data-vault-search]')) { state.vault.q = e.target.value; render(); return; }
   const k = e.target.dataset && e.target.dataset.draft;
   if (!k) return;
   if (e.target.value) state.drafts[k] = e.target.value; else delete state.drafts[k];
@@ -1107,7 +1255,8 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 if (state.page === 'home') loadHome();
-if (state.page !== 'schedule') loadHabits();
+if (state.page !== 'schedule' && state.page !== 'notes') loadHabits();
+if (state.page === 'notes') { history.replaceState({ vault: { folder: '', note: null } }, '', '#notes'); loadVault(); }
 load().then(() => {
   if (imported && !isStandalone()) offerImportCopy();
   else if (imported) toast('設定を取り込みました');

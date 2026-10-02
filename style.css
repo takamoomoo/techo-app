@@ -400,3 +400,63 @@ body.on-home main { padding-top: 18px; }
 .hb-warn { background: #3a2a12; border: 1px solid #e6b86a; color: #f7d89a; border-radius: 12px; padding: 12px 14px; font-size: 13px; line-height: 1.7; }
 .hb-warn b { color: #fff; }
 .hb-warn button { background: #e6b86a; color: #0c1624; border: 0; font-weight: 700; padding: 2px 10px; min-height: 0; }
+
+/* ---------- ノート閲覧（Obsidian を読むだけ） ---------- */
+.vaultpage { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 18px; align-items: start; color: #f3ede2; }
+.vl-side { background: #13233a; border: 1px solid rgba(230,184,106,.25); border-radius: 14px; padding: 12px; position: sticky; top: 70px;
+  max-height: calc(100vh - 90px); display: flex; flex-direction: column; }
+.vl-tools { display: flex; gap: 6px; }
+.vl-search { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 7px 10px; border-radius: 8px; border: 1px solid rgba(230,184,106,.35); background: #0f1d31; color: #f3ede2; }
+.vl-side button { background: transparent; color: #f3ede2; border-color: rgba(230,184,106,.3); }
+.vl-today { margin-top: 8px; width: 100%; text-align: left; font-weight: 700; color: #e6b86a !important; }
+.vl-list { margin-top: 8px; overflow-y: auto; flex: 1; }
+.vl-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; font-size: 13px; margin: 4px 0 8px; color: #aeb8c6; }
+.vl-crumbs button { border: 0 !important; padding: 2px 6px; min-height: 0; color: #e6b86a !important; background: transparent; }
+.vl-crumbs button:hover { background: rgba(230,184,106,.12); }
+.vl-crumbs i { font-style: normal; color: #56637a; }
+.vl-crumbs span { padding: 2px 6px; color: #f3ede2; }
+.vl-side .vl-item { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; border: 0; border-radius: 8px; padding: 8px 10px; min-height: 40px; }
+.vl-side .vl-item:hover { background: #182c49; }
+.vl-side .vl-item.on { background: #1d3354; box-shadow: inset 3px 0 0 #e6b86a; }
+.vl-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vl-item .nm small { display: block; font-size: 11px; color: #8794a6; }
+.vl-item.folder .nm { font-weight: 700; }
+.vl-item .ct { font-size: 11px; color: #0c1624; background: #e6b86a; border-radius: 999px; padding: 0 7px; }
+.vl-count { font-size: 12px; color: #8794a6; margin: 6px 4px; }
+.vl-reader { background: #fbf8f1; color: #1f2530; border-radius: 14px; padding: 20px 28px 16px; box-shadow: 0 12px 30px rgba(0,0,0,.35); min-height: 300px; min-width: 0; }
+.vl-reader.empty { display: grid; place-items: center; color: #6b7280; }
+.vl-rhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vl-rhead .vl-crumbs { margin: 0; } .vl-rhead .vl-crumbs button { color: #8a6421 !important; } .vl-rhead .vl-crumbs span { color: #1f2530; }
+.vl-back { display: none; }
+.vl-title { font: 800 24px "Shippori Mincho B1", "Yu Mincho", serif; margin: 8px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #e6b86a; overflow-wrap: anywhere; }
+.vl-body { font-size: 15px; line-height: 1.8; overflow-wrap: anywhere; }
+.vl-body h1, .vl-body h2, .vl-body h3, .vl-body h4 { line-height: 1.4; margin: 1.2em 0 .5em; }
+.vl-body h1 { font-size: 21px; } .vl-body h2 { font-size: 18px; border-bottom: 1px solid #e3ded3; padding-bottom: 4px; } .vl-body h3 { font-size: 16px; }
+.vl-body p { margin: .5em 0; }
+.vl-body ul, .vl-body ol { padding-left: 1.5em; margin: .4em 0; }
+.vl-body li > input[type=checkbox] { margin-right: 6px; }
+.vl-body blockquote { margin: .6em 0; padding: 6px 12px; border-left: 4px solid #d9a441; background: #f3ecdc; border-radius: 0 8px 8px 0; }
+.vl-body code { background: #efe9dc; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+.vl-body pre { background: #1f2530; color: #f3ede2; padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
+.vl-body pre code { background: none; padding: 0; }
+.vl-body table { border-collapse: collapse; display: block; overflow-x: auto; margin: .6em 0; font-size: 14px; }
+.vl-body th, .vl-body td { border: 1px solid #e3ded3; padding: 4px 8px; }
+.vl-body th { background: #f3ecdc; }
+.vl-body img { max-width: 100%; border-radius: 8px; }
+.vl-body hr { border: 0; border-top: 1px dashed #d8cfbd; margin: 1.2em 0; }
+.vl-body mark { background: #fbe7a6; }
+.vl-body a { color: #2f6fc8; }
+.vl-body a.vl-link { color: #8a6421; font-weight: 600; text-decoration: none; border-bottom: 1px dashed #d9a441; }
+.vl-missing { color: #9aa3b2; border-bottom: 1px dotted #c9c3b6; }
+.vl-meta { font-size: 12px; color: #6b7280; margin-bottom: 10px; }
+.vl-meta table { border-collapse: collapse; margin-top: 4px; }
+.vl-meta th { text-align: left; padding: 2px 10px 2px 0; font-weight: 600; }
+.vl-foot { font-size: 12px; color: #9aa3b2; margin-top: 24px; border-top: 1px solid #e3ded3; padding-top: 8px; }
+.vl-foot a { color: #8a6421; }
+@media (max-width: 900px) {
+  .vaultpage { grid-template-columns: minmax(0, 1fr); }
+  .vl-side { position: static; max-height: none; }
+  .vaultpage.reading .vl-side, .vaultpage:not(.reading) .vl-reader { display: none; }
+  .vl-back { display: inline-flex; background: #1f2530; color: #fff; border: 0; }
+  .vl-reader { padding: 14px 16px; }
+}

@@ -33,6 +33,15 @@ export class GitHubNotes {
   async putFile(path, text, sha, message) {
     return this.req('PUT', path, { message, content: O.b64encode(text), branch: this.branch, ...(sha ? { sha } : {}) });
   }
+  // リポジトリ内の全ファイル一覧（1回の通信）。ノート閲覧のフォルダ表示に使う
+  async listTree() {
+    const res = await fetch(`https://api.github.com/repos/${this.repo}/git/trees/${encodeURIComponent(this.branch)}?recursive=1`, {
+      cache: 'no-store', headers: { Authorization: `Bearer ${this.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+    });
+    if (!res.ok) throw new Error(res.status === 401 ? 'GitHubトークンが無効です（⚙設定で確認）' : `GitHub ${res.status}`);
+    const json = await res.json();
+    return { entries: json.tree || [], truncated: !!json.truncated };
+  }
   // 画像など（1MB未満）を base64 のまま取る
   async getBase64(path) {
     const r = await this.req('GET', path);
@@ -91,7 +100,8 @@ export class DemoNotes {
     try { localStorage.setItem(DEMO_KEY, JSON.stringify(all)); } catch { /* 無視 */ }
   }
   reset() { try { localStorage.removeItem(DEMO_KEY); } catch { /* 無視 */ } }
-  async getBase64() { return null; } // お試しでは表紙写真なし（グラデーション表示）
+  async getBase64(path) { const f = this.load()[path]; return f && f.b64 ? f.b64 : null; } // お試しでは表紙写真なし（グラデーション表示）
+  async listTree() { return { entries: Object.keys(this.load()).map(path => ({ path, type: 'blob', size: 1 })), truncated: false }; }
 }
 
 // GitHubトークンが無いとき用（この端末だけに保存。習慣など1ファイル単位の機能で使う）
@@ -115,6 +125,11 @@ export class LocalFileStore extends DemoNotes {
 export class Notes {
   constructor(store) { this.store = store; this.template = null; }
   get name() { return this.store.name; }
+
+  // ---- ノート閲覧（読むだけ） ----
+  listTree() { return this.store.listTree(); }
+  readNote(path) { return this.store.getFile(path); }
+  readImage(path) { return this.store.getBase64(path); }
 
   async loadDays(dates) {
     const files = await Promise.all(dates.map(d => this.store.getFile(O.notePath(d))));
