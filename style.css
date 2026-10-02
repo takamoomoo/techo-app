@@ -460,3 +460,15 @@ body.on-home main { padding-top: 18px; }
   .vl-back { display: inline-flex; background: #1f2530; color: #fff; border: 0; }
   .vl-reader { padding: 14px 16px; }
 }
+
+/* ---------- HOME のショートカット ---------- */
+.menu .sc-h { margin-top: 26px; }
+.sc-group { margin-bottom: 12px; }
+.sc-title { font-size: 12px; color: #aeb8c6; letter-spacing: .1em; margin: 0 0 6px 2px; }
+.sc-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; margin-bottom: 6px; text-decoration: none; color: #f3ede2;
+  background: #0f1d31; border: 1px solid rgba(230,184,106,.2); border-radius: 10px; font-size: 14px; }
+.sc-item:hover { border-color: #e6b86a; background: #182c49; }
+.sc-item .ic { font-size: 18px; }
+.sc-item .t { flex: 1; min-width: 0; }
+.sc-item .go { color: #e6b86a; }
+.sc-note { font-size: 11px; color: #8794a6; margin: 4px 2px 0; }

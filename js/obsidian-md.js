@@ -145,10 +145,14 @@ export const DEFAULT_HOME = {
     '目標と日常をリンクさせる。', `${HIGHLIGHT}徐々に負荷を上げる`, '小さな勝ちを褒める', 'なりたい自分を声に出す'],
   mission: '行政書士、土地家屋調査士の資格を有するAIエンジニアの目線で　土地に関する問題解決',
   sub: 'AIを使った、作業効率アップのプロ',
+  shortcuts: [], // [{ group, items: [{ title, url }] }]。URL は非公開の HOME.md にだけ置く
 };
 
+// 見出しに「PC」を含むグループは Windows の PC だけに出す（PCのアプリを起動するリンク用）
+export const isPcGroup = g => /PC/i.test(g.group);
+
 export function parseHome(text) {
-  const h = { title: '', items: [], mission: '', sub: '' };
+  const h = { title: '', items: [], mission: '', sub: '', shortcuts: [] };
   let sec = '';
   for (const raw of String(text || '').split(/\r?\n/)) {
     const l = raw.trim();
@@ -159,8 +163,16 @@ export function parseHome(text) {
       else if (/^[-*]\s+/.test(l)) h.items.push(l.replace(/^[-*]\s+/, ''));
     } else if (sec === 'ミッション') h.mission = h.mission ? `${h.mission}\n${l}` : l;
     else if (sec === '肩書き') h.sub = h.sub ? `${h.sub}\n${l}` : l;
+    else if (sec === 'ショートカット') {
+      if (l.startsWith('### ')) h.shortcuts.push({ group: l.slice(4).trim(), items: [] });
+      const m = l.match(/^[-*]\s+\[([^\]]+)\]\(([^)\s]+)\)/);
+      if (m) {
+        if (!h.shortcuts.length) h.shortcuts.push({ group: 'ショートカット', items: [] });
+        h.shortcuts[h.shortcuts.length - 1].items.push({ title: m[1].trim(), url: m[2] });
+      }
+    }
   }
-  return h.title || h.items.length || h.mission ? h : { ...DEFAULT_HOME };
+  return h.title || h.items.length || h.mission ? h : { ...DEFAULT_HOME, shortcuts: h.shortcuts };
 }
 
 export function formatHome(h) {
@@ -171,6 +183,9 @@ export function formatHome(h) {
     '## 今月のスローガン', `### ${h.title}`, ...h.items.map(i => `- ${i}`), '',
     '## ミッション', ...String(h.mission || '').split(/\r?\n/).filter(Boolean), '',
     '## 肩書き', ...String(h.sub || '').split(/\r?\n/).filter(Boolean), '',
+    ...(h.shortcuts && h.shortcuts.length ? ['## ショートカット',
+      'HOME のメニューの下に出るリンクです。「### グループ名」の下に「- [表示名](URL)」で書きます。見出しに PC を含むグループは PC だけに表示されます。', '',
+      ...h.shortcuts.flatMap(g => [`### ${g.group}`, ...g.items.map(i => `- [${i.title}](${i.url})`), ''])] : []),
   ].join('\n');
 }
 

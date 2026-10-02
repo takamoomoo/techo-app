@@ -234,6 +234,24 @@ const MENU = [
   } },
 ];
 
+// ショートカット（HOME.md の「## ショートカット」）。見出しに PC を含むグループは Windows の PC だけ
+const IS_PC = /Windows/.test(navigator.userAgent) && matchMedia('(pointer: fine)').matches;
+function shortcutsHtml(h) {
+  const safe = u => /^(https?:\/\/|obsidian:|techo-launch:)/i.test(u); // javascript: などは出さない
+  const groups = (h.shortcuts || []).map(g => ({ ...g, items: g.items.filter(i => safe(i.url)) }))
+    .filter(g => g.items.length && (IS_PC || !O.isPcGroup(g)));
+  if (!groups.length) return '';
+  const icon = u => (/^obsidian:/.test(u) ? '💎' : /^techo-launch:/.test(u) ? '🚀' : '🔗');
+  return `<h3 class="sc-h">SHORTCUT <span>ショートカット</span></h3>${groups.map(g => `
+    <div class="sc-group"><div class="sc-title">${esc(g.group)}</div>
+      ${g.items.map(i => {
+        const web = /^https?:/i.test(i.url);
+        return `<a class="sc-item" href="${esc(i.url)}"${web ? ' target="_blank" rel="noopener"' : ''}><span class="ic">${icon(i.url)}</span><span class="t">${esc(i.title)}</span><span class="go">${web ? '↗' : '›'}</span></a>`;
+      }).join('')}
+    </div>`).join('')}
+    <p class="sc-note">追加・変更は Obsidian の「手帳アプリ/HOME.md」の「ショートカット」で。</p>`;
+}
+
 function homeHtml() {
   const h = state.home || O.DEFAULT_HOME;
   const items = h.items.map((t, i) => {
@@ -259,6 +277,7 @@ function homeHtml() {
       ${MENU.map(m => m.soon
         ? `<div class="mi soon"><span class="ic">${m.icon}</span><span><b>${esc(m.title)}</b><small>${esc(m.desc)}</small></span></div>`
         : `<button class="mi" data-act="${m.act}"><span class="ic">${m.icon}</span><span><b>${esc(m.title)}</b><small>${esc(m.desc)}</small></span>${m.badge && m.badge() ? `<span class="badge">${esc(m.badge())}</span>` : ''}<span class="go">›</span></button>`).join('')}
+      ${shortcutsHtml(h)}
       ${state.homeError ? `<p class="note">${esc(state.homeError)}</p>` : ''}
       ${!notes ? '<p class="note">⚙でGitHubトークンを入れると、スローガンがObsidianに保存されPCとスマホで共有されます。</p>' : ''}
     </aside>
@@ -298,6 +317,7 @@ function editHome() {
       title: String(fd.get('title')).trim(),
       items: String(fd.get('items')).split(/\r?\n/).map(s => s.trim()).filter(Boolean),
       mission: String(fd.get('mission')).trim(), sub: String(fd.get('sub')).trim(),
+      shortcuts: h.shortcuts || [], // ショートカットは Obsidian 側で編集（ここでは消さずに残す）
     };
     if (!notes) { lsSet('techo-home-local', next); state.home = next; render(); toast('保存しました'); return; }
     try {
