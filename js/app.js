@@ -317,16 +317,19 @@ let habitQueue = Promise.resolve(); // 連打しても書込みは1つずつ
 const habitPending = []; // 画面には反映済みで、まだ保存していない変更
 
 // トークンを入れる前にこの端末だけへ保存していた記録があれば、Obsidian へ移して端末側は消す
+// （トークン無しの保存場所と、お試しモードの保存場所の両方を見る）
 async function moveLocalHabits() {
   if (!notes || notes.name !== 'github') return;
-  const local = new LocalFileStore(), f = await local.getFile(H.HABIT_PATH);
-  if (!f) return;
-  const extra = H.parseHabits(f.text);
-  if (extra.habits.length || Object.keys(extra.done).length) {
-    await notes.updateHabits(d => H.mergeHabits(d, extra), [state.today.slice(0, 7)], 'この端末の記録を合流');
-    toast('この端末だけに保存していた習慣を Obsidian に移しました');
+  for (const local of [new LocalFileStore(), new LocalFileStore('techo-demo-notes-v1')]) {
+    const f = await local.getFile(H.HABIT_PATH);
+    if (!f) continue;
+    const extra = H.parseHabits(f.text);
+    if (extra.habits.length || Object.keys(extra.done).length) {
+      await notes.updateHabits(d => H.mergeHabits(d, extra), [state.today.slice(0, 7)], 'この端末の記録を合流');
+      toast('この端末だけに保存していた習慣を Obsidian に移しました');
+    }
+    local.removeFile(H.HABIT_PATH);
   }
-  local.removeFile(H.HABIT_PATH);
 }
 
 async function loadHabits() {
