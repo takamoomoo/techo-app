@@ -316,9 +316,23 @@ const shiftMonth = (ym, d) => { const t = new Date(Number(ym.slice(0, 4)), Numbe
 let habitQueue = Promise.resolve(); // 連打しても書込みは1つずつ
 const habitPending = []; // 画面には反映済みで、まだ保存していない変更
 
+// トークンを入れる前にこの端末だけへ保存していた記録があれば、Obsidian へ移して端末側は消す
+async function moveLocalHabits() {
+  if (!notes || notes.name !== 'github') return;
+  const local = new LocalFileStore(), f = await local.getFile(H.HABIT_PATH);
+  if (!f) return;
+  const extra = H.parseHabits(f.text);
+  if (extra.habits.length || Object.keys(extra.done).length) {
+    await notes.updateHabits(d => H.mergeHabits(d, extra), [state.today.slice(0, 7)], 'この端末の記録を合流');
+    toast('この端末だけに保存していた習慣を Obsidian に移しました');
+  }
+  local.removeFile(H.HABIT_PATH);
+}
+
 async function loadHabits() {
   state.habitError = '';
   try {
+    await moveLocalHabits();
     state.habits = await habitStore().loadHabits();
     lsSet('techo-habit-cache', serializeHabits(state.habits));
   } catch (e) {
@@ -375,12 +389,13 @@ function editHabits() {
 function habitHtml() {
   const d = state.habits, today = state.today, ym = state.habitMonth;
   const err = state.habitError ? `<p class="note">${esc(state.habitError)}</p>` : '';
-  const where = notes ? '' : '<p class="note">この端末だけに保存中。⚙でGitHubトークンを入れると Obsidian に保存されPCとスマホで共有されます。</p>';
-  if (!d) return `<div class="habitpage"><p class="hb-empty">${state.habitError ? '' : '読み込み中…'}</p>${err}</div>`;
+  const where = notes && notes.name === 'github' ? '' : `<div class="hb-warn">⚠ <b>この端末だけに保存されています（スマホ・PCで共有されません）</b><br>
+    共有するには <button data-act="settings">⚙設定</button> で GitHub アクセストークンを入れてください。入れると、ここまでの記録も Obsidian に自動で移ります。</div>`;
+  if (!d) return `<div class="habitpage">${where}<p class="hb-empty">${state.habitError ? '' : '読み込み中…'}</p>${err}</div>`;
   if (!d.habits.length) {
     return `<div class="habitpage"><section class="hb-card hb-empty">
       <h2>✅ 習慣化管理</h2><p>続けたい習慣を登録しましょう。毎日チェックすると、連続日数と達成率が出ます。</p>
-      <button class="primary" data-act="habit-edit">＋ 習慣を登録</button></section>${err}${where}</div>`;
+      <button class="primary" data-act="habit-edit">＋ 習慣を登録</button></section>${err}</div>`.replace('<div class="habitpage">', `<div class="habitpage">${where}`);
   }
   const c = H.todayCount(d, today);
   const wd = L.WEEKDAYS[L.weekday(today)];
@@ -408,7 +423,7 @@ function habitHtml() {
   }).join('');
   const [y, m] = ym.split('-').map(Number);
 
-  return `<div class="habitpage">
+  return `<div class="habitpage">${where}
     <section class="hb-card">
       <div class="hb-head"><h2>✅ 今日の習慣 <small>${Number(today.slice(5, 7))}/${Number(today.slice(8))}（${wd}）</small></h2>
         <span class="hb-count">${c.total ? `${c.done} / ${c.total}` : ''}</span></div>
@@ -421,7 +436,7 @@ function habitHtml() {
       <div class="hb-grid-wrap"><table class="hb-grid"><thead><tr><th class="hn"></th>${head}<th class="rate">達成率</th></tr></thead><tbody>${rows}</tbody></table></div>
       <p class="hb-legend">マスを押すと過去の日も付け外しできます。･＝対象外の曜日。達成率は今日までの対象日で計算。</p>
       <div class="dadd"><button data-act="open-review">🏆 ふり返り</button><button data-act="habit-edit">✎ 習慣を編集</button></div>
-    </section>${err}${where}
+    </section>${err}
   </div>`;
 }
 

@@ -106,6 +106,10 @@ export class LocalFileStore extends DemoNotes {
     all[path] = { text, sha: Math.random().toString(36).slice(2) };
     try { localStorage.setItem(this.key, JSON.stringify(all)); } catch { /* 無視 */ }
   }
+  removeFile(path) {
+    const all = this.load(); delete all[path];
+    try { localStorage.setItem(this.key, JSON.stringify(all)); } catch { /* 無視 */ }
+  }
 }
 
 export class Notes {

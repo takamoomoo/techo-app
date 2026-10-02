@@ -136,3 +136,12 @@ export function todayCount(data, today) {
 export const monthDates = ym => Array.from({ length: daysInMonth(ym) }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
 export const cellState = (data, h, date, today) =>
   date > today ? 'future' : isDone(data, h.name, date) ? 'done' : !started(h, date) ? 'before' : !isTarget(h, date) ? 'off' : 'miss';
+
+// 端末だけに保存していた記録を Obsidian 側へ合流（習慣は名前で重複を除き、✅ は足し合わせ）
+export function mergeHabits(base, extra) {
+  const habits = [...base.habits];
+  for (const h of extra.habits) if (!habits.some(x => x.name === h.name)) habits.push({ ...h });
+  const done = Object.fromEntries(Object.entries(base.done).map(([d, s]) => [d, new Set(s)]));
+  for (const [d, s] of Object.entries(extra.done)) s.forEach(n => (done[d] ||= new Set()).add(n));
+  return { habits, done };
+}
