@@ -214,10 +214,9 @@ function moveTask(t, date) {
 }
 
 // ---------- HOME（表紙＋メニュー） ----------
-// メニューは配列で管理（大きな時計・習慣化管理などを後から足す）
+// メニューは配列で管理（機能を足すときはここに追加）
 const MENU = [
   { act: 'open-schedule', icon: '📅', title: 'スケジュール帳', desc: '週・日表示／Googleカレンダー・Obsidian連携' },
-  { icon: '⏰', title: '大きな時計', desc: '準備中', soon: true },
   { act: 'open-habit', icon: '✅', title: '習慣化管理', desc: '毎日のチェック・連続日数・達成率', badge: () => {
     if (!state.habits || !state.habits.habits.length) return '';
     const c = H.todayCount(state.habits, state.today);
