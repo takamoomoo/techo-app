@@ -222,6 +222,7 @@ function moveTask(t, date) {
 // メニューは配列で管理（機能を足すときはここに追加）
 const MENU = [
   { act: 'open-schedule', icon: '📅', title: 'スケジュール帳', desc: '週・日表示／Googleカレンダー・Obsidian連携' },
+  { act: 'open-stopwatch', icon: '⏱️', title: '作業タイマー', desc: '作業時間を計ってObsidianの行動ログに記録' },
   { act: 'open-voice-reflection', icon: '🎙️', title: '夜の30秒ふり返り', desc: '音声で話すだけ！デイリーの一言・行動ログに保存' },
   { act: 'open-habit', icon: '✅', title: '習慣化管理', desc: '毎日のチェック・連続日数・達成率', badge: () => {
     if (!state.habits || !state.habits.habits.length) return '';
@@ -319,7 +320,7 @@ function shortcutsHtml(h) {
 }
 
 function clockHtml() {
-  return `<div class="cv-clock" id="cvClock" title="現在時刻">
+  return `<div class="cv-clock" id="cvClock" data-act="open-stopwatch" role="button" tabindex="0" title="現在時刻（クリックで作業タイマー起動）">
     <svg class="clock-svg" viewBox="0 0 120 120">
       <defs>
         <radialGradient id="clockBg" cx="50%" cy="50%" r="50%">
@@ -722,6 +723,206 @@ function openVoiceReflectionModal(defaultDest = 'hitokoto') {
 
   form.querySelectorAll('[data-close]').forEach(b => {
     b.addEventListener('click', stopVoiceRec);
+  });
+}
+
+// ---------- ストップウォッチ（作業タイマー・Obsidian記録） ----------
+const SW_KEY = 'techo-stopwatch';
+
+function loadSwState() {
+  return lsGet(SW_KEY) || { running: false, startAt: 0, elapsedBefore: 0, sessionStart: 0, task: '' };
+}
+
+function saveSwState(st) {
+  lsSet(SW_KEY, st);
+  updateHeaderStopwatch();
+}
+
+function getSwElapsed() {
+  const st = loadSwState();
+  return st.elapsedBefore + (st.running ? (Date.now() - st.startAt) : 0);
+}
+
+function formatSwTime(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function formatSwShort(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function formatDurationHuman(ms) {
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${Math.max(1, totalSec)}秒`;
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin < 60) return `${totalMin}分`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m ? `${h}時間${m}分` : `${h}時間`;
+}
+
+let headerSwInterval = null;
+function updateHeaderStopwatch() {
+  const btn = $('#headerSwBtn');
+  const txt = $('#headerSwText');
+  if (!btn || !txt) return;
+  const st = loadSwState();
+  if (st.running) {
+    btn.classList.add('running');
+    const elapsed = getSwElapsed();
+    txt.textContent = ` ${formatSwShort(elapsed)}`;
+    if (!headerSwInterval) {
+      headerSwInterval = setInterval(updateHeaderStopwatch, 1000);
+    }
+  } else {
+    btn.classList.remove('running');
+    if (st.elapsedBefore > 0) {
+      txt.textContent = ` ${formatSwShort(st.elapsedBefore)}`;
+    } else {
+      txt.textContent = '';
+    }
+    if (headerSwInterval) {
+      clearInterval(headerSwInterval);
+      headerSwInterval = null;
+    }
+  }
+}
+
+let swModalTimer = null;
+function openStopwatchModal() {
+  let st = loadSwState();
+
+  const form = openModal('⏱️ 作業タイマー・ストップウォッチ', `
+    <div class="sw-modal">
+      <div class="sw-timer-panel">
+        <div class="sw-display" id="swDisplay">${formatSwTime(getSwElapsed())}</div>
+        <div class="sw-sub-display" id="swSubDisplay">${st.running ? '🟢 計測中...' : st.elapsedBefore > 0 ? '⏸ 一時停止中' : '作業開始時にスタートを押してください'}</div>
+        <div class="sw-controls">
+          <button type="button" class="sw-btn ${st.running ? 'pause' : 'start'}" id="swToggleBtn">${st.running ? '⏸ 一時停止' : '▶ スタート'}</button>
+          <button type="button" class="sw-btn reset" id="swResetBtn">↺ リセット</button>
+        </div>
+      </div>
+      <div class="sw-record-box">
+        <h3>📝 オブちゃん（Obsidian）に記録</h3>
+        <label><b>作業内容・メモ</b>
+          <input name="task" id="swTaskInput" placeholder="例：18・17ブロック 境界確定チェック" value="${esc(st.task || '')}" autofocus>
+        </label>
+        <div>
+          <b>保存先セクション:</b>
+          <div class="voice-dest-select">
+            <label><input type="radio" name="dest" value="log" checked> ⚔️ 結果記録（行動ログ）</label>
+            <label><input type="radio" name="dest" value="memo"> 📝 手帳メモ</label>
+          </div>
+        </div>
+        <div class="sw-preview-tag" id="swPreviewTag">記録形式：--</div>
+      </div>
+      <p class="note">「${L.mdLabel(state.today)}」のデイリーノートに、作業時間と時間帯つきで記録されます。</p>
+    </div>`,
+  async fd => {
+    if (swModalTimer) { clearInterval(swModalTimer); swModalTimer = null; }
+    const currentElapsed = getSwElapsed();
+    const taskName = String(fd.get('task')).trim();
+    const dest = String(fd.get('dest'));
+
+    if (currentElapsed < 5000 && !taskName) {
+      toast('作業時間を計測するか、作業内容を入力してください');
+      return false;
+    }
+    if (!notes) {
+      toast('⚙設定でGitHubトークンを入れるとObsidianに記録できます');
+      return false;
+    }
+
+    const durationStr = formatDurationHuman(currentElapsed);
+    const now = new Date();
+    const startTime = st.sessionStart ? new Date(st.sessionStart) : new Date(now.getTime() - currentElapsed);
+    const startHhMm = L.hhmm(startTime.getHours() * 60 + startTime.getMinutes());
+    const endHhMm = L.hhmm(now.getHours() * 60 + now.getMinutes());
+    const timeSpan = `${startHhMm}〜${endHhMm}`;
+
+    const recordLine = taskName
+      ? `${timeSpan}（${durationStr}）${taskName}`
+      : `${timeSpan}（${durationStr}）作業完了`;
+
+    try {
+      await notes.append(state.today, dest, recordLine);
+      toast(`Obsidianの${dest === 'log' ? '行動ログ' : '手帳メモ'}に記録しました！（${durationStr}）`);
+      saveSwState({ running: false, startAt: 0, elapsedBefore: 0, sessionStart: 0, task: '' });
+      if (state.view === 'day') loadNotesWeek();
+    } catch (e) {
+      toast(`記録に失敗しました: ${e.message}`);
+      return false;
+    }
+  }, '💾 オブちゃんに記録してリセット');
+
+  const displayEl = form.querySelector('#swDisplay');
+  const subDisplayEl = form.querySelector('#swSubDisplay');
+  const toggleBtn = form.querySelector('#swToggleBtn');
+  const resetBtn = form.querySelector('#swResetBtn');
+  const taskInput = form.querySelector('#swTaskInput');
+  const previewTag = form.querySelector('#swPreviewTag');
+
+  function updateUi() {
+    const elapsed = getSwElapsed();
+    displayEl.textContent = formatSwTime(elapsed);
+    st = loadSwState();
+    if (st.running) {
+      subDisplayEl.textContent = '🟢 計測中...';
+      toggleBtn.className = 'sw-btn pause';
+      toggleBtn.textContent = '⏸ 一時停止';
+    } else {
+      subDisplayEl.textContent = elapsed > 0 ? '⏸ 一時停止中' : '作業開始時にスタートを押してください';
+      toggleBtn.className = 'sw-btn start';
+      toggleBtn.textContent = elapsed > 0 ? '▶ 再開' : '▶ スタート';
+    }
+    const duration = formatDurationHuman(elapsed);
+    const tName = taskInput.value.trim() || '（作業名）';
+    previewTag.textContent = `記録形式：・📓 ${duration}　${tName}`;
+  }
+
+  taskInput.addEventListener('input', () => {
+    st.task = taskInput.value;
+    saveSwState(st);
+    updateUi();
+  });
+
+  toggleBtn.onclick = () => {
+    st = loadSwState();
+    if (st.running) {
+      const now = Date.now();
+      st.elapsedBefore += (now - st.startAt);
+      st.running = false;
+      st.startAt = 0;
+    } else {
+      st.running = true;
+      st.startAt = Date.now();
+      if (!st.sessionStart) st.sessionStart = st.startAt;
+    }
+    saveSwState(st);
+    updateUi();
+  };
+
+  resetBtn.onclick = () => {
+    if (getSwElapsed() > 0 && !confirm('タイマーをリセットしますか？')) return;
+    saveSwState({ running: false, startAt: 0, elapsedBefore: 0, sessionStart: 0, task: '' });
+    taskInput.value = '';
+    updateUi();
+  };
+
+  updateUi();
+  swModalTimer = setInterval(updateUi, 200);
+
+  form.querySelectorAll('[data-close]').forEach(b => {
+    b.addEventListener('click', () => {
+      if (swModalTimer) { clearInterval(swModalTimer); swModalTimer = null; }
+    });
   });
 }
 
@@ -1590,6 +1791,7 @@ document.addEventListener('click', async ev => {
     switch (a.dataset.act) {
       case 'home': return goPage('home');
       case 'open-schedule': return goPage('schedule');
+      case 'open-stopwatch': return openStopwatchModal();
       case 'open-voice-reflection': return openVoiceReflectionModal(a.dataset.dest || 'hitokoto');
       case 'add-deadline': return addDeadlineModal();
       case 'toggle-deadline': return toggleDeadline(Number(a.dataset.idx));
@@ -1685,6 +1887,7 @@ function doPrint() {
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
+updateHeaderStopwatch();
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && L.ymd(new Date()) !== state.today) {
     if (state.page !== 'schedule') { state.today = L.ymd(new Date()); state.habitMonth = state.today.slice(0, 7); loadHabits(); }
