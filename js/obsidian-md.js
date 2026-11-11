@@ -4,6 +4,7 @@ import { parseYmd } from './logic.js';
 export const MEMO_HEADING = '### 📝 手帳メモ';
 export const LOG_HEADING = '### ⚔️ 行動ログ';
 export const MISSION_HEADING = '### 🚀 今日の1ミッション';
+export const HITOKOTO_HEADING = '### 🔥 一言';
 export const MARK = '📓';
 
 const WEEKDAY_FULL = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
@@ -47,6 +48,17 @@ export function ensureMemoSection(text) {
     at = r ? r.end : lines.length;
   }
   lines.splice(at, 0, MEMO_HEADING, '', '');
+  return lines.join(eol);
+}
+
+// 🔥 一言 節が無ければ末尾（作成日時の上）に作る
+export function ensureHitokotoSection(text) {
+  const eol = eolOf(text);
+  const lines = text.split(/\r?\n/);
+  if (sectionRange(lines, HITOKOTO_HEADING)) return text;
+  let at = lines.findIndex(l => l.trim().startsWith('**作成日時：**') || l.trim().startsWith('%% obsidian-daily'));
+  if (at < 0) at = lines.length;
+  lines.splice(at, 0, HITOKOTO_HEADING, '', '（自分に命令）', '', '');
   return lines.join(eol);
 }
 
@@ -145,6 +157,7 @@ export const DEFAULT_HOME = {
     '目標と日常をリンクさせる。', `${HIGHLIGHT}徐々に負荷を上げる`, '小さな勝ちを褒める', 'なりたい自分を声に出す'],
   mission: '行政書士、土地家屋調査士の資格を有するAIエンジニアの目線で　土地に関する問題解決',
   sub: 'AIを使った、作業効率アップのプロ',
+  deadlines: [], // [{ date: 'YYYY-MM-DD', title: '...', done: false }]
   shortcuts: [], // [{ group, items: [{ title, url }] }]。URL は非公開の HOME.md にだけ置く
 };
 
@@ -152,7 +165,7 @@ export const DEFAULT_HOME = {
 export const isPcGroup = g => /PC/i.test(g.group);
 
 export function parseHome(text) {
-  const h = { title: '', items: [], mission: '', sub: '', shortcuts: [] };
+  const h = { title: '', items: [], mission: '', sub: '', shortcuts: [], deadlines: [] };
   let sec = '';
   for (const raw of String(text || '').split(/\r?\n/)) {
     const l = raw.trim();
@@ -163,7 +176,12 @@ export function parseHome(text) {
       else if (/^[-*]\s+/.test(l)) h.items.push(l.replace(/^[-*]\s+/, ''));
     } else if (sec === 'ミッション') h.mission = h.mission ? `${h.mission}\n${l}` : l;
     else if (sec === '肩書き') h.sub = h.sub ? `${h.sub}\n${l}` : l;
-    else if (sec === 'ショートカット') {
+    else if (sec === '重要締め切り') {
+      const m = l.match(/^[-*]\s+(?:\[(x| )\]\s*)?(\d{4}-\d{2}-\d{2})\s*[|｜:：]\s*(.+)$/i);
+      if (m) {
+        h.deadlines.push({ date: m[2], title: m[3].trim(), done: m[1] === 'x' || m[1] === 'X' });
+      }
+    } else if (sec === 'ショートカット') {
       if (l.startsWith('### ')) h.shortcuts.push({ group: l.slice(4).trim(), items: [] });
       const m = l.match(/^[-*]\s+\[([^\]]+)\]\(([^)\s]+)\)/);
       if (m) {
@@ -172,17 +190,20 @@ export function parseHome(text) {
       }
     }
   }
-  return h.title || h.items.length || h.mission ? h : { ...DEFAULT_HOME, shortcuts: h.shortcuts };
+  return h.title || h.items.length || h.mission ? h : { ...DEFAULT_HOME, shortcuts: h.shortcuts, deadlines: h.deadlines };
 }
 
 export function formatHome(h) {
   return [
-    '# 🛖 HOME（手帳アプリの表紙）', '',
+    '# 🛖 HOME（表紙）', '',
     '手帳アプリの表紙に表示されます。アプリの「今月のスローガン」を押しても編集できます。',
     `スローガンの先頭に ${HIGHLIGHT} を付けた行は強調表示されます。`, '',
     '## 今月のスローガン', `### ${h.title}`, ...h.items.map(i => `- ${i}`), '',
     '## ミッション', ...String(h.mission || '').split(/\r?\n/).filter(Boolean), '',
     '## 肩書き', ...String(h.sub || '').split(/\r?\n/).filter(Boolean), '',
+    ...(h.deadlines && h.deadlines.length ? ['## 重要締め切り',
+      '契約、提出物、協議、更新などの重要期日です。「- YYYY-MM-DD | 項目名」で書きます。', '',
+      ...h.deadlines.map(d => `- ${d.done ? '[x] ' : ''}${d.date} | ${d.title}`), ''] : []),
     ...(h.shortcuts && h.shortcuts.length ? ['## ショートカット',
       'HOME のメニューの下に出るリンクです。「### グループ名」の下に「- [表示名](URL)」で書きます。見出しに PC を含むグループは PC だけに表示されます。', '',
       ...h.shortcuts.flatMap(g => [`### ${g.group}`, ...g.items.map(i => `- [${i.title}](${i.url})`), ''])] : []),

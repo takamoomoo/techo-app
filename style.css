@@ -472,3 +472,315 @@ body.on-home main { padding-top: 18px; }
 .sc-item .t { flex: 1; min-width: 0; }
 .sc-item .go { color: #e6b86a; }
 .sc-note { font-size: 11px; color: #8794a6; margin: 4px 2px 0; }
+
+/* ---------- 重要締め切り（DEADLINES） ---------- */
+.dl-card {
+  margin: 18px 0 24px;
+  background: #101d31;
+  border: 1px solid rgba(230, 184, 106, 0.35);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+.dl-hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(230, 184, 106, 0.2);
+}
+.dl-label {
+  font: 700 13px "Cinzel", "Yu Mincho", serif;
+  letter-spacing: 0.1em;
+  color: #e6b86a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dl-label .jp {
+  font-family: inherit;
+  font-size: 12px;
+  color: #c9d4e4;
+  font-weight: 500;
+}
+.dl-add-btn {
+  background: rgba(230, 184, 106, 0.15);
+  border: 1px solid rgba(230, 184, 106, 0.4);
+  color: #e6b86a;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 0;
+}
+.dl-add-btn:hover {
+  background: rgba(230, 184, 106, 0.28);
+}
+.dl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dl-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #172740;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px 12px;
+  transition: all 0.2s;
+}
+.dl-item:hover {
+  border-color: rgba(230, 184, 106, 0.4);
+}
+.dl-item.done {
+  opacity: 0.55;
+  background: #121c2c;
+}
+.dl-item.done .dl-title {
+  text-decoration: line-through;
+  color: #8794a6;
+}
+.dl-check {
+  background: transparent;
+  border: 0;
+  font-size: 16px;
+  color: #e6b86a;
+  cursor: pointer;
+  padding: 0;
+  min-height: 0;
+  line-height: 1;
+}
+.dl-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dl-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.dl-badge.urgent {
+  background: #ff5722;
+  color: #fff;
+  animation: pulse 2s infinite;
+}
+.dl-badge.today {
+  background: #e91e63;
+  color: #fff;
+  font-weight: 800;
+  animation: pulse 1.5s infinite;
+}
+.dl-badge.overdue {
+  background: #d32f2f;
+  color: #fff;
+}
+.dl-badge.near {
+  background: #f59e0b;
+  color: #1a1a1a;
+}
+.dl-badge.normal {
+  background: #3b82f6;
+  color: #fff;
+}
+.dl-badge.done {
+  background: #475569;
+  color: #94a3b8;
+}
+.dl-date {
+  font-size: 12px;
+  color: #c9d4e4;
+  font-family: monospace;
+}
+.dl-title {
+  font-size: 14px;
+  color: #f3ede2;
+  font-weight: 600;
+  flex: 1;
+  min-width: 120px;
+}
+.dl-del-btn {
+  background: transparent;
+  border: 0;
+  color: #8794a6;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  min-height: 0;
+}
+.dl-del-btn:hover {
+  color: #ff6b6b;
+}
+.dl-empty-msg {
+  font-size: 13px;
+  color: #8794a6;
+  margin: 8px 0;
+  text-align: center;
+}
+
+/* スケジュール帳バナー内の締切通知 */
+.bn.deadline {
+  background: #1c2738;
+  border-color: #f59e0b;
+  color: #f3ede2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+}
+.dl-bn-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f59e0b;
+  color: #0c1624;
+}
+.dl-bn-badge.urgent {
+  background: #ff5722;
+  color: #fff;
+}
+.dl-bn-badge.today {
+  background: #e91e63;
+  color: #fff;
+}
+.dl-bn-date {
+  font-size: 12px;
+  color: #c9d4e4;
+  font-family: monospace;
+}
+.dl-bn-link {
+  margin-left: auto;
+  background: rgba(230, 184, 106, 0.2);
+  border: 1px solid rgba(230, 184, 106, 0.4);
+  color: #e6b86a;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* ---------- 夜の30秒ふり返り（音声一言メモ） ---------- */
+.voice-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.voice-rec-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  background: #0f1d31;
+  border: 1px solid rgba(230, 184, 106, 0.25);
+  border-radius: 12px;
+  text-align: center;
+}
+.voice-mic-btn {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 2px solid #e6b86a;
+  background: #182c49;
+  font-size: 28px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.25s;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+.voice-mic-btn:hover {
+  transform: scale(1.05);
+  background: #20395e;
+}
+.voice-mic-btn.recording {
+  background: #d32f2f;
+  border-color: #ff5252;
+  box-shadow: 0 0 20px rgba(255, 82, 82, 0.6);
+  animation: pulse-red 1.2s infinite;
+}
+@keyframes pulse-red {
+  0% { transform: scale(1); box-shadow: 0 0 10px rgba(255, 82, 82, 0.4); }
+  50% { transform: scale(1.06); box-shadow: 0 0 24px rgba(255, 82, 82, 0.8); }
+  100% { transform: scale(1); box-shadow: 0 0 10px rgba(255, 82, 82, 0.4); }
+}
+.voice-timer {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e6b86a;
+  margin-top: 10px;
+  font-family: monospace;
+}
+.voice-status-msg {
+  font-size: 12px;
+  color: #aeb8c6;
+  margin-top: 4px;
+}
+.voice-bar-wrap {
+  width: 100%;
+  height: 6px;
+  background: #1a2a40;
+  border-radius: 3px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+.voice-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: #e6b86a;
+  transition: width 0.3s linear;
+}
+.voice-dest-select {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #f3ede2;
+  margin-top: 4px;
+}
+.voice-dest-select label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.voice-textarea {
+  width: 100%;
+  font-size: 15px;
+  line-height: 1.6;
+  padding: 10px;
+  border-radius: 8px;
+  background: #0f1d31;
+  border: 1px solid rgba(230, 184, 106, 0.35);
+  color: #f3ede2;
+  resize: vertical;
+}
+.voice-trigger-btn {
+  background: rgba(230, 184, 106, 0.15);
+  border: 1px solid rgba(230, 184, 106, 0.35);
+  color: #e6b86a;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+.voice-trigger-btn:hover {
+  background: rgba(230, 184, 106, 0.28);
+}

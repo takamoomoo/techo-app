@@ -203,19 +203,23 @@ export class Notes {
     }
   }
 
-  // kind: 'memo' → 📝 手帳メモ / 'log' → ⚔️ 行動ログ。競合したら読み直して最大3回
+  // kind: 'memo' → 📝 手帳メモ / 'log' → ⚔️ 行動ログ / 'hitokoto' → 🔥 一言。競合したら読み直して最大3回
   async append(date, kind, input) {
     const entries = O.formatEntries(kind, input);
     if (!entries.length) return 0;
     const path = O.notePath(date);
-    const heading = kind === 'memo' ? O.MEMO_HEADING : O.LOG_HEADING;
+    let heading = O.LOG_HEADING;
+    let label = '行動ログ';
+    if (kind === 'memo') { heading = O.MEMO_HEADING; label = '手帳メモ'; }
+    else if (kind === 'hitokoto') { heading = O.HITOKOTO_HEADING; label = '一言'; }
     for (let attempt = 0; ; attempt++) {
       const f = await this.store.getFile(path);
       let text = f ? f.text : O.fillTemplate(await this.getTemplate(), date);
       if (kind === 'memo') text = O.ensureMemoSection(text);
+      else if (kind === 'hitokoto') text = O.ensureHitokotoSection(text);
       text = O.appendToSection(text, heading, entries);
       try {
-        await this.store.putFile(path, text, f && f.sha, `techo: ${date} ${kind === 'memo' ? '手帳メモ' : '行動ログ'}追記`);
+        await this.store.putFile(path, text, f && f.sha, `techo: ${date} ${label}追記`);
         return entries.length;
       } catch (e) {
         if ((e.status === 409 || e.status === 422) && attempt < 2) continue;

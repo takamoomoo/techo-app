@@ -222,6 +222,7 @@ function moveTask(t, date) {
 // メニューは配列で管理（機能を足すときはここに追加）
 const MENU = [
   { act: 'open-schedule', icon: '📅', title: 'スケジュール帳', desc: '週・日表示／Googleカレンダー・Obsidian連携' },
+  { act: 'open-voice-reflection', icon: '🎙️', title: '夜の30秒ふり返り', desc: '音声で話すだけ！デイリーの一言・行動ログに保存' },
   { act: 'open-habit', icon: '✅', title: '習慣化管理', desc: '毎日のチェック・連続日数・達成率', badge: () => {
     if (!state.habits || !state.habits.habits.length) return '';
     const c = H.todayCount(state.habits, state.today);
@@ -233,6 +234,71 @@ const MENU = [
     return HS.badges(state.habits, state.today).rank;
   } },
 ];
+
+function deadlineDiffDays(dateStr, todayStr) {
+  const d = L.parseYmd(dateStr);
+  const t = L.parseYmd(todayStr);
+  return Math.round((d - t) / 86400000);
+}
+
+function deadlinesHtml(h) {
+  const all = (h.deadlines || []).map((d, i) => ({ ...d, origIdx: i }));
+  const sorted = all.slice().sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    return a.date.localeCompare(b.date);
+  });
+  if (!sorted.length) {
+    return `<div class="dl-card empty">
+      <div class="dl-hdr">
+        <span class="dl-label">⏳ DEADLINES <span class="jp">重要締め切り</span></span>
+        <button class="dl-add-btn" data-act="add-deadline">＋締切追加</button>
+      </div>
+      <p class="dl-empty-msg">締め切りはありません。「＋締切追加」から登録できます。</p>
+    </div>`;
+  }
+
+  const list = sorted.map(d => {
+    const diff = deadlineDiffDays(d.date, state.today);
+    let badgeClass = 'normal';
+    let badgeText = `あと ${diff}日`;
+    if (d.done) {
+      badgeClass = 'done';
+      badgeText = '完了';
+    } else if (diff < 0) {
+      badgeClass = 'overdue';
+      badgeText = `超過 ${Math.abs(diff)}日`;
+    } else if (diff === 0) {
+      badgeClass = 'today';
+      badgeText = '本日締切 🔥';
+    } else if (diff <= 3) {
+      badgeClass = 'urgent';
+      badgeText = `あと ${diff}日 ⚡`;
+    } else if (diff <= 7) {
+      badgeClass = 'near';
+      badgeText = `あと ${diff}日`;
+    }
+    const dateFormatted = L.mdLabel(d.date);
+    return `<div class="dl-item${d.done ? ' done' : ''}">
+      <button class="dl-check" data-act="toggle-deadline" data-idx="${d.origIdx}" title="${d.done ? '未完了に戻す' : '完了にする'}">${d.done ? '☑' : '☐'}</button>
+      <div class="dl-body">
+        <span class="dl-badge ${badgeClass}">${badgeText}</span>
+        <span class="dl-date">${dateFormatted}</span>
+        <span class="dl-title">${esc(d.title)}</span>
+      </div>
+      <button class="dl-del-btn" data-act="delete-deadline" data-idx="${d.origIdx}" title="削除">×</button>
+    </div>`;
+  }).join('');
+
+  return `<div class="dl-card">
+    <div class="dl-hdr">
+      <span class="dl-label">⏳ DEADLINES <span class="jp">重要締め切り</span></span>
+      <div class="dl-actions">
+        <button class="dl-add-btn" data-act="add-deadline">＋締切追加</button>
+      </div>
+    </div>
+    <div class="dl-list">${list}</div>
+  </div>`;
+}
 
 // ショートカット（HOME.md の「## ショートカット」）。見出しに PC を含むグループは Windows の PC だけ
 const IS_PC = /Windows/.test(navigator.userAgent) && matchMedia('(pointer: fine)').matches;
@@ -264,6 +330,7 @@ function homeHtml() {
       <div class="cv-photo${state.cover ? '' : ' none'}" ${photo}></div>
       <div class="cv-brand">PERSONAL NOTEBOOK</div>
       <div class="cv-title"><span class="hut">🛖</span><h1>HOME</h1><div class="line"></div></div>
+      ${deadlinesHtml(h)}
       <div class="cv-slogan" data-act="edit-home" role="button" tabindex="0" title="押して編集">
         <div class="label">☀ MONTHLY SLOGAN <span class="jp">今月のスローガン</span><span class="pen">✎ 編集</span></div>
         <h2>${esc(h.title)}</h2><ol>${items}</ol>
@@ -317,6 +384,7 @@ function editHome() {
       title: String(fd.get('title')).trim(),
       items: String(fd.get('items')).split(/\r?\n/).map(s => s.trim()).filter(Boolean),
       mission: String(fd.get('mission')).trim(), sub: String(fd.get('sub')).trim(),
+      deadlines: h.deadlines || [], // 締め切りは消さずに保持
       shortcuts: h.shortcuts || [], // ショートカットは Obsidian 側で編集（ここでは消さずに残す）
     };
     if (!notes) { lsSet('techo-home-local', next); state.home = next; render(); toast('保存しました'); return; }
@@ -330,6 +398,218 @@ function editHome() {
       return false;
     }
   }, '保存');
+}
+
+async function toggleDeadline(idx) {
+  const h = state.home || O.DEFAULT_HOME;
+  const list = (h.deadlines || []).slice();
+  if (!list[idx]) return;
+  list[idx] = { ...list[idx], done: !list[idx].done };
+  const next = { ...h, deadlines: list };
+  if (!notes) {
+    state.home = next; render(); toast(list[idx].done ? '完了にしました' : '未完了に戻しました'); return;
+  }
+  try {
+    const r = await notes.saveHome(next, state.homeSha);
+    state.home = r.home; state.homeSha = r.sha; lsSet('techo-home-cache', r.home);
+    render(); toast(list[idx].done ? '完了にしました' : '未完了に戻しました');
+  } catch (e) {
+    toast(`保存に失敗しました: ${e.message}`);
+    if (e.code === 'STALE') await loadHome();
+  }
+}
+
+async function deleteDeadline(idx) {
+  const h = state.home || O.DEFAULT_HOME;
+  const list = (h.deadlines || []).slice();
+  if (!list[idx]) return;
+  if (!confirm(`「${list[idx].title}」を削除しますか？`)) return;
+  list.splice(idx, 1);
+  const next = { ...h, deadlines: list };
+  if (!notes) {
+    state.home = next; render(); toast('削除しました'); return;
+  }
+  try {
+    const r = await notes.saveHome(next, state.homeSha);
+    state.home = r.home; state.homeSha = r.sha; lsSet('techo-home-cache', r.home);
+    render(); toast('削除しました');
+  } catch (e) {
+    toast(`削除に失敗しました: ${e.message}`);
+    if (e.code === 'STALE') await loadHome();
+  }
+}
+
+function addDeadlineModal() {
+  const h = state.home || O.DEFAULT_HOME;
+  const defDate = L.addDays(state.today, 3);
+  openModal('重要締め切りの追加', `
+    <label>期日（締切日）<input name="date" type="date" required value="${defDate}"></label>
+    <label>項目名・内容<input name="title" required placeholder="例：雄武町 協議資料提出" autofocus></label>
+    <p class="note">Obsidian の「手帳アプリ/HOME.md」の「## 重要締め切り」に保存されます。</p>`,
+  async fd => {
+    const date = String(fd.get('date')).trim();
+    const title = String(fd.get('title')).trim();
+    if (!date || !title) return false;
+    const list = [...(h.deadlines || []), { date, title, done: false }];
+    const next = { ...h, deadlines: list };
+    if (!notes) {
+      state.home = next; render(); toast('追加しました'); return;
+    }
+    try {
+      const r = await notes.saveHome(next, state.homeSha);
+      state.home = r.home; state.homeSha = r.sha; lsSet('techo-home-cache', r.home);
+      render(); toast('Obsidianに保存しました');
+    } catch (e) {
+      toast(e.message);
+      if (e.code === 'STALE') await loadHome();
+      return false;
+    }
+  }, '追加');
+}
+
+// ---------- 夜の30秒ふり返り（音声一言メモ） ----------
+let currentRec = null;
+let voiceTimerId = null;
+
+function openVoiceReflectionModal(defaultDest = 'hitokoto') {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const isSupported = !!SpeechRec;
+
+  const form = openModal('🎙️ 夜の30秒ふり返り（音声一言メモ）', `
+    <div class="voice-modal">
+      <div class="voice-rec-area">
+        <button type="button" class="voice-mic-btn" id="voiceMicBtn" title="マイクを押して話す">🎙️</button>
+        <div class="voice-timer" id="voiceTimer">00:00 / 00:30</div>
+        <div class="voice-status-msg" id="voiceStatusMsg">
+          ${isSupported ? 'マイクを押すと30秒音声認識がスタートします' : '※ブラウザが音声認識非対応のため、テキスト入力できます'}
+        </div>
+        <div class="voice-bar-wrap"><div class="voice-bar-fill" id="voiceBar"></div></div>
+      </div>
+      <label><b>認識されたテキスト（手動編集も可能）</b>
+        <textarea name="text" class="voice-textarea" rows="4" placeholder="マイクを押して話すか、ここに直接入力してください..." required></textarea>
+      </label>
+      <div>
+        <b>保存先（Obsidian当日ノート）:</b>
+        <div class="voice-dest-select">
+          <label><input type="radio" name="dest" value="hitokoto" ${defaultDest === 'hitokoto' ? 'checked' : ''}> 🔥 一言（自分に命令）</label>
+          <label><input type="radio" name="dest" value="log" ${defaultDest === 'log' ? 'checked' : ''}> ⚔️ 行動ログ</label>
+          <label><input type="radio" name="dest" value="memo" ${defaultDest === 'memo' ? 'checked' : ''}> 📝 手帳メモ</label>
+        </div>
+      </div>
+      <p class="note">「${L.mdLabel(state.today)}」のデイリーノートに保存されます。夜の振り返りや日々の思考記録に。</p>
+    </div>`,
+  async fd => {
+    stopVoiceRec();
+    const text = String(fd.get('text')).trim();
+    const dest = String(fd.get('dest'));
+    if (!text) { toast('内容を入力してください'); return false; }
+    if (!notes) {
+      toast('⚙設定でGitHubトークンを入れるとObsidianに保存できます');
+      return false;
+    }
+    try {
+      await notes.append(state.today, dest, text);
+      const label = dest === 'hitokoto' ? '一言' : dest === 'log' ? '行動ログ' : '手帳メモ';
+      toast(`Obsidianの「${label}」に保存しました！`);
+      if (state.view === 'day') loadNotesWeek();
+    } catch (e) {
+      toast(`保存に失敗しました: ${e.message}`);
+      return false;
+    }
+  }, '💾 Obsidianに保存');
+
+  const micBtn = form.querySelector('#voiceMicBtn');
+  const timerEl = form.querySelector('#voiceTimer');
+  const statusEl = form.querySelector('#voiceStatusMsg');
+  const barEl = form.querySelector('#voiceBar');
+  const textarea = form.querySelector('textarea[name=text]');
+
+  let elapsedSec = 0;
+  let isRecording = false;
+
+  function stopVoiceRec() {
+    if (voiceTimerId) { clearInterval(voiceTimerId); voiceTimerId = null; }
+    if (currentRec) {
+      try { currentRec.stop(); } catch { /* 無視 */ }
+      currentRec = null;
+    }
+    isRecording = false;
+    if (micBtn) {
+      micBtn.classList.remove('recording');
+      micBtn.innerHTML = '🎙️';
+    }
+    if (statusEl) statusEl.textContent = '録音停止中（編集して保存できます）';
+  }
+
+  function startVoiceRec() {
+    if (!isSupported) {
+      toast('お使いのブラウザは音声認識に対応していません。テキストを直接入力してください。');
+      return;
+    }
+    try {
+      currentRec = new SpeechRec();
+      currentRec.lang = 'ja-JP';
+      currentRec.continuous = true;
+      currentRec.interimResults = true;
+
+      elapsedSec = 0;
+      isRecording = true;
+      micBtn.classList.add('recording');
+      micBtn.innerHTML = '⏹';
+      statusEl.textContent = '🔴 音声認識中... お話しください（最大30秒）';
+
+      let baseText = textarea.value.trim();
+      if (baseText) baseText += '\n';
+
+      currentRec.onresult = ev => {
+        let interim = '';
+        let final = '';
+        for (let i = ev.resultIndex; i < ev.results.length; ++i) {
+          const res = ev.results[i];
+          if (res.isFinal) final += res[0].transcript;
+          else interim += res[0].transcript;
+        }
+        textarea.value = baseText + final + (interim ? ` (${interim})` : '');
+      };
+
+      currentRec.onerror = err => {
+        console.warn('SpeechRec error:', err);
+        statusEl.textContent = `音声エラー: ${err.error || '認識中断'}`;
+        stopVoiceRec();
+      };
+
+      currentRec.onend = () => {
+        if (isRecording) {
+          stopVoiceRec();
+        }
+      };
+
+      currentRec.start();
+
+      voiceTimerId = setInterval(() => {
+        elapsedSec++;
+        const s = String(elapsedSec).padStart(2, '0');
+        timerEl.textContent = `00:${s} / 00:30`;
+        barEl.style.width = `${(elapsedSec / 30) * 100}%`;
+        if (elapsedSec >= 30) {
+          toast('30秒経過したため録音を終了しました');
+          stopVoiceRec();
+        }
+      }, 1000);
+    } catch (e) {
+      toast(`マイク起動に失敗しました: ${e.message}`);
+      stopVoiceRec();
+    }
+  }
+
+  micBtn.onclick = () => {
+    if (isRecording) stopVoiceRec();
+    else startVoiceRec();
+  };
+
+  form.querySelectorAll('[data-close]').forEach(b => {
+    b.addEventListener('click', stopVoiceRec);
+  });
 }
 
 // ---------- 習慣化管理（手帳アプリ/習慣.md） ----------
@@ -760,6 +1040,20 @@ function bannerHtml() {
     const at = state.cachedAt ? new Date(state.cachedAt) : null;
     b.push(`<div class="bn warn">オフライン表示${at ? `（${at.getMonth() + 1}/${at.getDate()} ${L.hhmm(at.getHours() * 60 + at.getMinutes())} 時点）` : ''}・閲覧のみ <button data-act="reload">再読込</button></div>`);
   } else if (state.error) b.push(`<div class="bn err">${esc(state.error)}</div>`);
+
+  const uncompleted = ((state.home && state.home.deadlines) || [])
+    .filter(d => !d.done)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (uncompleted.length) {
+    const nextDl = uncompleted[0];
+    const diff = deadlineDiffDays(nextDl.date, state.today);
+    let badgeClass = 'near';
+    let badgeText = `あと ${diff}日`;
+    if (diff < 0) { badgeClass = 'overdue'; badgeText = `⚠️ 超過 ${Math.abs(diff)}日`; }
+    else if (diff === 0) { badgeClass = 'today'; badgeText = '🔥 本日締切'; }
+    else if (diff <= 3) { badgeClass = 'urgent'; badgeText = `⚡ あと ${diff}日`; }
+    b.push(`<div class="bn deadline"><span class="dl-bn-badge ${badgeClass}">${badgeText}</span> <span class="dl-bn-date">${L.mdLabel(nextDl.date)}</span> <b>${esc(nextDl.title)}</b> <button data-act="home" class="dl-bn-link">締切一覧</button></div>`);
+  }
   return b.join('');
 }
 
@@ -893,7 +1187,7 @@ function noteSection(d, kind) {
   const list = n ? n[kind] : [];
   const k = `${d}:${kind}`;
   return `<section class="dsec notes">
-    <h3>${title}${state.notesOffline ? '<small>（オフライン表示）</small>' : ''}</h3>
+    <h3>${title}${state.notesOffline ? '<small>（オフライン表示）</small>' : ''} <button class="voice-trigger-btn" data-act="open-voice-reflection" data-dest="${kind}">🎙️ 音声入力</button></h3>
     ${list.length ? `<ul class="nlist">${list.map((x, i) => `<li class="${x.mine ? 'mine' : ''}"><span>${esc(x.text)}</span>${x.mine
       ? `<button class="ndel" data-act="del-note" data-date="${d}" data-kind="${kind}" data-i="${i}" aria-label="この行を削除">✕</button>` : ''}</li>`).join('')}</ul>` : '<p class="none">まだありません</p>'}
     <textarea data-draft="${k}" rows="2" placeholder="${kind === 'memo' ? '例：2-21網走川美和 完了検査' : '例：杭10本と見出しを準備した'}（1行1件）">${esc(state.drafts[k] || '')}</textarea>
@@ -1177,6 +1471,10 @@ document.addEventListener('click', async ev => {
     switch (a.dataset.act) {
       case 'home': return goPage('home');
       case 'open-schedule': return goPage('schedule');
+      case 'open-voice-reflection': return openVoiceReflectionModal(a.dataset.dest || 'hitokoto');
+      case 'add-deadline': return addDeadlineModal();
+      case 'toggle-deadline': return toggleDeadline(Number(a.dataset.idx));
+      case 'delete-deadline': return deleteDeadline(Number(a.dataset.idx));
       case 'edit-home': return editHome();
       case 'open-habit': return goPage('habit');
       case 'open-review': return goPage('review');
