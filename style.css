@@ -784,3 +784,70 @@ body.on-home main { padding-top: 18px; }
 .voice-trigger-btn:hover {
   background: rgba(230, 184, 106, 0.28);
 }
+
+/* ---------- HOME 表紙の洗練されたクロノグラフ時計 ---------- */
+.cv-brand {
+  top: 18px !important;
+  z-index: 2;
+}
+.cv-clock {
+  position: absolute;
+  top: 42px;
+  left: 32px;
+  width: 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 2;
+  user-select: none;
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.55));
+  transition: transform 0.2s ease;
+}
+.cv-clock:hover {
+  transform: scale(1.03);
+}
+.clock-svg {
+  width: 104px;
+  height: 104px;
+  display: block;
+}
+.clock-digital {
+  margin-top: 4px;
+  font: 700 11px "Cinzel", "Courier New", monospace;
+  color: #f7d89a;
+  letter-spacing: 0.14em;
+  background: rgba(12, 22, 36, 0.82);
+  backdrop-filter: blur(6px);
+  padding: 1px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(230, 184, 106, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.hand {
+  transform-origin: 60px 60px;
+}
+.hand-sec {
+  transition: transform 0.08s linear;
+}
+
+@media (max-width: 760px) {
+  .cv-brand {
+    top: 14px !important;
+    left: 20px !important;
+  }
+  .cv-clock {
+    top: 34px;
+    left: 20px;
+    width: 86px;
+  }
+  .clock-svg {
+    width: 82px;
+    height: 82px;
+  }
+  .clock-digital {
+    font-size: 9.5px;
+    padding: 0 6px;
+    margin-top: 3px;
+    letter-spacing: 0.1em;
+  }
+}

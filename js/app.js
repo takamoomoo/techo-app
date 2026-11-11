@@ -318,6 +318,117 @@ function shortcutsHtml(h) {
     <p class="sc-note">追加・変更は Obsidian の「手帳アプリ/HOME.md」の「ショートカット」で。</p>`;
 }
 
+function clockHtml() {
+  return `<div class="cv-clock" id="cvClock" title="現在時刻">
+    <svg class="clock-svg" viewBox="0 0 120 120">
+      <defs>
+        <radialGradient id="clockBg" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#182c49" stop-opacity="0.88" />
+          <stop offset="75%" stop-color="#0c1624" stop-opacity="0.94" />
+          <stop offset="100%" stop-color="#1a2f4c" stop-opacity="0.98" />
+        </radialGradient>
+        <filter id="clockGlow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.55"/>
+        </filter>
+      </defs>
+      <!-- ベゼル・盤面 -->
+      <circle cx="60" cy="60" r="56" fill="url(#clockBg)" stroke="#e6b86a" stroke-opacity="0.45" stroke-width="1.5" filter="url(#clockGlow)" />
+      <circle cx="60" cy="60" r="51.5" fill="none" stroke="#e6b86a" stroke-opacity="0.18" stroke-width="0.75" stroke-dasharray="1.5 2.5" />
+      <circle cx="60" cy="60" r="47" fill="none" stroke="#e6b86a" stroke-opacity="0.08" stroke-width="0.5" />
+      
+      <!-- 目盛り -->
+      <g stroke="#e6b86a" stroke-linecap="round">
+        <line x1="60" y1="11" x2="60" y2="17" stroke-width="2" stroke-opacity="0.9" />
+        <line x1="84.5" y1="17.5" x2="81.5" y2="22.7" stroke-width="1" stroke-opacity="0.45" />
+        <line x1="102.5" y1="35.5" x2="97.3" y2="38.5" stroke-width="1" stroke-opacity="0.45" />
+        <line x1="109" y1="60" x2="103" y2="60" stroke-width="2" stroke-opacity="0.9" />
+        <line x1="102.5" y1="84.5" x2="97.3" y2="81.5" stroke-width="1" stroke-opacity="0.45" />
+        <line x1="84.5" y1="102.5" x2="81.5" y2="97.3" stroke-width="1" stroke-opacity="0.45" />
+        <line x1="60" y1="109" x2="60" y2="103" stroke-width="2" stroke-opacity="0.9" />
+        <line x1="35.5" y1="102.5" x2="38.5" y2="97.3" stroke-width="1" stroke-opacity="0.45" />
+        <line x1="17.5" y1="84.5" x2="22.7" y2="81.5" stroke-width="1" stroke-opacity="0.45" />
+        <line x1="11" y1="60" x2="17" y2="60" stroke-width="2" stroke-opacity="0.9" />
+        <line x1="17.5" y1="35.5" x2="22.7" y2="38.5" stroke-width="1" stroke-opacity="0.45" />
+        <line x1="35.5" y1="17.5" x2="38.5" y2="22.7" stroke-width="1" stroke-opacity="0.45" />
+      </g>
+
+      <!-- ローマ数字 -->
+      <text x="60" y="27" font-family="'Cinzel', Georgia, serif" font-size="9" font-weight="700" fill="#f7d89a" fill-opacity="0.92" text-anchor="middle">XII</text>
+      <text x="94" y="63" font-family="'Cinzel', Georgia, serif" font-size="9" font-weight="700" fill="#f7d89a" fill-opacity="0.92" text-anchor="middle">III</text>
+      <text x="60" y="99" font-family="'Cinzel', Georgia, serif" font-size="9" font-weight="700" fill="#f7d89a" fill-opacity="0.92" text-anchor="middle">VI</text>
+      <text x="26" y="63" font-family="'Cinzel', Georgia, serif" font-size="9" font-weight="700" fill="#f7d89a" fill-opacity="0.92" text-anchor="middle">IX</text>
+
+      <!-- 針 (中心 60, 60) -->
+      <!-- 時針 -->
+      <g class="hand" id="clockHandHour">
+        <polygon points="58.5,64 58.5,35 60,32 61.5,35 61.5,64" fill="#f3ede2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.6))" />
+        <line x1="60" y1="62" x2="60" y2="36" stroke="#e6b86a" stroke-width="1" />
+      </g>
+      <!-- 分針 -->
+      <g class="hand" id="clockHandMin">
+        <polygon points="58.8,66 58.8,24 60,20 61.2,24 61.2,66" fill="#f3ede2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.6))" />
+        <line x1="60" y1="64" x2="60" y2="23" stroke="#e6b86a" stroke-width="0.8" />
+      </g>
+      <!-- 秒針 -->
+      <g class="hand hand-sec" id="clockHandSec">
+        <line x1="60" y1="74" x2="60" y2="16" stroke="#ff5252" stroke-width="1" stroke-linecap="round" />
+        <circle cx="60" cy="74" r="2.2" fill="#ff5252" />
+        <circle cx="60" cy="24" r="1.6" fill="#ff5252" />
+      </g>
+      <!-- センターピン -->
+      <circle cx="60" cy="60" r="3.2" fill="#e6b86a" stroke="#0c1624" stroke-width="1" />
+      <circle cx="60" cy="60" r="1.2" fill="#0c1624" />
+    </svg>
+    <div class="clock-digital" id="clockDigital">--:--:--</div>
+  </div>`;
+}
+
+let coverClockTimer = null;
+function updateCoverClock() {
+  const clockEl = $('#cvClock');
+  if (!clockEl) {
+    if (coverClockTimer) { clearInterval(coverClockTimer); coverClockTimer = null; }
+    return;
+  }
+  const now = new Date();
+  const sec = now.getSeconds();
+  const ms = now.getMilliseconds();
+  const min = now.getMinutes();
+  const hour = now.getHours();
+
+  const secDeg = (sec + ms / 1000) * 6;
+  const minDeg = (min + sec / 60) * 6;
+  const hourDeg = ((hour % 12) + min / 60 + sec / 3600) * 30;
+
+  const hSec = clockEl.querySelector('#clockHandSec');
+  const hMin = clockEl.querySelector('#clockHandMin');
+  const hHour = clockEl.querySelector('#clockHandHour');
+  const digi = clockEl.querySelector('#clockDigital');
+
+  if (hSec) hSec.style.transform = `rotate(${secDeg}deg)`;
+  if (hMin) hMin.style.transform = `rotate(${minDeg}deg)`;
+  if (hHour) hHour.style.transform = `rotate(${hourDeg}deg)`;
+  if (digi) {
+    const hh = String(hour).padStart(2, '0');
+    const mm = String(min).padStart(2, '0');
+    const ss = String(sec).padStart(2, '0');
+    digi.textContent = `${hh}:${mm}:${ss}`;
+  }
+}
+
+function startCoverClock() {
+  if (coverClockTimer) clearInterval(coverClockTimer);
+  updateCoverClock();
+  coverClockTimer = setInterval(updateCoverClock, 100);
+}
+
+function stopCoverClock() {
+  if (coverClockTimer) {
+    clearInterval(coverClockTimer);
+    coverClockTimer = null;
+  }
+}
+
 function homeHtml() {
   const h = state.home || O.DEFAULT_HOME;
   const items = h.items.map((t, i) => {
@@ -327,7 +438,9 @@ function homeHtml() {
   const photo = state.cover ? `style="background-image:url('${state.cover}')"` : '';
   return `<div class="homepage">
     <section class="cover">
-      <div class="cv-photo${state.cover ? '' : ' none'}" ${photo}></div>
+      <div class="cv-photo${state.cover ? '' : ' none'}" ${photo}>
+        ${clockHtml()}
+      </div>
       <div class="cv-brand">PERSONAL NOTEBOOK</div>
       <div class="cv-title"><span class="hut">🛖</span><h1>HOME</h1><div class="line"></div></div>
       ${deadlinesHtml(h)}
@@ -1000,6 +1113,11 @@ function render() {
     $('#banner').innerHTML = '';
     const prevSearch = document.activeElement && document.activeElement.matches('[data-vault-search]') ? document.activeElement.selectionStart : null;
     $('#main').innerHTML = state.page === 'home' ? homeHtml() : state.page === 'review' ? reviewHtml() : state.page === 'notes' ? vaultHtml() : habitHtml();
+    if (state.page === 'home') {
+      startCoverClock();
+    } else {
+      stopCoverClock();
+    }
     if (state.page === 'notes') {
       loadVaultImages();
       const box = $('[data-vault-search]');
@@ -1010,6 +1128,7 @@ function render() {
     $('#selbar').hidden = true;
     return;
   }
+  stopCoverClock();
   $('#period').textContent = periodLabel();
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === state.view));
   $('#banner').innerHTML = bannerHtml();
